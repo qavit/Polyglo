@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Polyglo</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">P</span>
+        <div>
+          <strong>Polyglo</strong>
+          <small>Daily Polyglot Scheduler</small>
+        </div>
+      </div>
+      <nav class="tabs" aria-label="Primary">
+        <button class="tab active" data-view="dashboard">Dashboard</button>
+        <button class="tab" data-view="vocabulary">Vocabulary</button>
+        <button class="tab" data-view="lessons">Daily Lessons</button>
+        <button class="tab" data-view="reviews">Review</button>
+        <button class="tab" data-view="settings">Settings</button>
+      </nav>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <h1 id="view-title">Dashboard</h1>
+          <p id="view-subtitle">今日排程、詞庫狀態與最近學習紀錄</p>
+        </div>
+        <div class="actions">
+          <input id="lesson-date" type="date" />
+          <button id="generate-today" class="primary">Generate</button>
+        </div>
+      </header>
+
+      <section id="notice" class="notice hidden"></section>
+
+      <section id="dashboard" class="view active">
+        <div class="metrics" id="metrics"></div>
+        <div class="split">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Today's Lesson</h2>
+              <button id="mark-sent" class="ghost">Mark Sent</button>
+            </div>
+            <div id="today-lesson" class="lesson-empty"></div>
+          </section>
+          <section class="panel">
+            <h2>Recent Words</h2>
+            <div id="recent-words" class="compact-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="vocabulary" class="view">
+        <div class="toolbar">
+          <select id="filter-language"></select>
+          <select id="filter-status">
+            <option value="">All statuses</option>
+            <option value="draft">Draft</option>
+            <option value="reviewed">Reviewed</option>
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
+          </select>
+          <button id="reload-vocab" class="ghost">Refresh</button>
+        </div>
+        <div class="vocab-layout">
+          <section class="panel">
+            <h2>Add Vocabulary</h2>
+            <form id="vocab-form" class="form-grid">
+              <label>Language<select name="language" required></select></label>
+              <label>Word<input name="word" required /></label>
+              <label>Reading<input name="reading" /></label>
+              <label>Part of speech<input name="part_of_speech" required /></label>
+              <label>Level<input name="level" required placeholder="C1 / A2 / N4" /></label>
+              <label>Status<select name="status"><option>draft</option><option>reviewed</option><option selected>active</option><option>archived</option></select></label>
+              <label class="wide">中文解釋<input name="meaning_zh" required /></label>
+              <label class="wide">English definition<input name="meaning_en" required /></label>
+              <label class="wide">Example<textarea name="example_sentence" required></textarea></label>
+              <label class="wide">例句中文翻譯<textarea name="example_translation_zh" required></textarea></label>
+              <label class="wide">Collocation<textarea name="collocation"></textarea></label>
+              <label class="wide">Usage note<textarea name="note"></textarea></label>
+              <label class="wide">Mnemonic<textarea name="mnemonic"></textarea></label>
+              <button class="primary wide" type="submit">Add word</button>
+            </form>
+          </section>
+          <section class="panel">
+            <h2>Vocabulary Bank</h2>
+            <div id="vocab-list" class="vocab-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="lessons" class="view">
+        <div id="lesson-list" class="lesson-list"></div>
+      </section>
+
+      <section id="reviews" class="view">
+        <div class="vocab-layout">
+          <section class="panel">
+            <h2>Log Review</h2>
+            <form id="review-form" class="form-grid">
+              <label class="wide">Vocabulary<select name="vocabulary_item_id" required></select></label>
+              <label>Rating<input type="number" name="rating" min="0" max="5" value="3" required /></label>
+              <label>Review date<input type="date" name="review_date" /></label>
+              <label class="check"><input type="checkbox" name="recall_success" /> Recall success</label>
+              <label class="wide">Note<textarea name="note"></textarea></label>
+              <button class="primary wide" type="submit">Save review</button>
+            </form>
+          </section>
+          <section class="panel">
+            <h2>Review Logs</h2>
+            <div id="review-list" class="compact-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="settings" class="view">
+        <section class="panel settings-panel">
+          <h2>Current MVP Settings</h2>
+          <div id="settings-list" class="settings-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

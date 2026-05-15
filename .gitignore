@@ -1,0 +1,4 @@
+__pycache__/
+*.py[cod]
+polyglo.sqlite3
+.DS_Store
