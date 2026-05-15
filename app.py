@@ -561,6 +561,21 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception as exc:
             self.send_json({"error": str(exc)}, 500)
 
+    def do_DELETE(self) -> None:
+        parsed = urlparse(self.path)
+        try:
+            if parsed.path.startswith("/api/vocabulary/"):
+                item_id = parsed.path.split("/")[3]
+                self.send_json(delete_vocabulary(item_id))
+                return
+            if parsed.path.startswith("/api/languages/"):
+                code = parsed.path.split("/")[3]
+                self.send_json(delete_language(code))
+                return
+            self.send_json({"error": "Not found"}, 404)
+        except Exception as exc:
+            self.send_json({"error": str(exc)}, 500)
+
     def do_PATCH(self) -> None:
         parsed = urlparse(self.path)
         try:
@@ -628,6 +643,11 @@ def list_vocabulary(conn: sqlite3.Connection, query: dict[str, list[str]]) -> li
         if value:
             filters.append(f"{field} = ?")
             params.append(value)
+    q = query.get("q", [""])[0].strip()
+    if q:
+        filters.append("(lower(word) LIKE ? OR lower(meaning_en) LIKE ? OR lower(meaning_zh) LIKE ?)")
+        like = f"%{q.lower()}%"
+        params.extend([like, like, like])
     where = f"WHERE {' AND '.join(filters)}" if filters else ""
     rows = conn.execute(
         f"SELECT * FROM vocabulary_items {where} ORDER BY language, level, word",
@@ -712,6 +732,26 @@ def create_language(payload: dict[str, Any]) -> dict[str, Any]:
             (code,),
         ).fetchone()
         return row_to_dict(row)
+
+
+def delete_language(code: str) -> dict[str, Any]:
+    with connect() as conn:
+        row = conn.execute("SELECT code FROM languages WHERE code = ?", (code,)).fetchone()
+        if not row:
+            raise ValueError("Language not found")
+        vocab_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM vocabulary_items WHERE language = ?", (code,)
+        ).fetchone()["count"]
+        conn.execute("DELETE FROM languages WHERE code = ?", (code,))
+        if vocab_count:
+            item_ids = [r["id"] for r in conn.execute(
+                "SELECT id FROM vocabulary_items WHERE language = ?", (code,)
+            ).fetchall()]
+            for item_id in item_ids:
+                conn.execute("DELETE FROM daily_lesson_items WHERE vocabulary_item_id = ?", (item_id,))
+                conn.execute("DELETE FROM review_logs WHERE vocabulary_item_id = ?", (item_id,))
+            conn.execute("DELETE FROM vocabulary_items WHERE language = ?", (code,))
+        return {"deleted": code, "vocabulary_deleted": vocab_count}
 
 
 def update_language(code: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -928,6 +968,17 @@ def update_vocabulary(item_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         if not row:
             raise ValueError("Vocabulary item not found")
         return row_to_dict(row)
+
+
+def delete_vocabulary(item_id: str) -> dict[str, Any]:
+    with connect() as conn:
+        row = conn.execute("SELECT id FROM vocabulary_items WHERE id = ?", (item_id,)).fetchone()
+        if not row:
+            raise ValueError("Vocabulary item not found")
+        conn.execute("DELETE FROM daily_lesson_items WHERE vocabulary_item_id = ?", (item_id,))
+        conn.execute("DELETE FROM review_logs WHERE vocabulary_item_id = ?", (item_id,))
+        conn.execute("DELETE FROM vocabulary_items WHERE id = ?", (item_id,))
+        return {"deleted": item_id}
 
 
 def _compute_next_review(

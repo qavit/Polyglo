@@ -477,3 +477,24 @@ label {
 
 .panel-note { font-size: 0.85rem; color: var(--text-muted, #666); margin-bottom: 1rem; }
 .panel-note code { font-size: 0.8rem; background: #f0f0f0; padding: 0.1em 0.3em; border-radius: 3px; }
+
+.card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.edit-panel {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+button.danger {
+  color: var(--warm);
+}
+
+button.danger:hover {
+  background: #f6e8dd;
+}

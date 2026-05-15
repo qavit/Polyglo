@@ -62,8 +62,27 @@ function formatLanguage(code) {
 
 function wordCard(item, controls = true) {
   const actionLabel = item.status === "active" ? "Archive" : item.source === "ai" && item.status === "draft" ? "Approve" : "Activate";
+  const editForm = controls ? `
+    <div class="edit-panel hidden" data-id="${item.id}">
+      <div class="form-grid" style="margin-top:12px">
+        <label>Word<input name="word" value="${escapeHtml(item.word)}" /></label>
+        <label>Reading<input name="reading" value="${escapeHtml(item.reading || "")}" /></label>
+        <label>Level<input name="level" value="${escapeHtml(item.level)}" /></label>
+        <label>Part of speech<input name="part_of_speech" value="${escapeHtml(item.part_of_speech)}" /></label>
+        <label class="wide">Chinese meaning<input name="meaning_zh" value="${escapeHtml(item.meaning_zh)}" /></label>
+        <label class="wide">English definition<input name="meaning_en" value="${escapeHtml(item.meaning_en)}" /></label>
+        <label class="wide">Example<textarea name="example_sentence">${escapeHtml(item.example_sentence)}</textarea></label>
+        <label class="wide">Chinese example<textarea name="example_translation_zh">${escapeHtml(item.example_translation_zh)}</textarea></label>
+        <label class="wide">Collocation<textarea name="collocation">${escapeHtml(item.collocation || "")}</textarea></label>
+        <label class="wide">Note<textarea name="note">${escapeHtml(item.note || "")}</textarea></label>
+        <label class="wide">Mnemonic<textarea name="mnemonic">${escapeHtml(item.mnemonic || "")}</textarea></label>
+        <button class="primary save-vocab-edit" data-id="${item.id}">Save</button>
+        <button class="ghost cancel-edit">Cancel</button>
+      </div>
+    </div>
+  ` : "";
   return `
-    <article class="word-card">
+    <article class="word-card" data-id="${item.id}">
       <header>
         <div>
           <div class="word-title">${escapeHtml(item.word)}${item.reading ? ` · ${escapeHtml(item.reading)}` : ""}</div>
@@ -74,7 +93,14 @@ function wordCard(item, controls = true) {
       <p class="word-meta">${escapeHtml(item.meaning_zh)} · ${escapeHtml(item.meaning_en)}</p>
       <p>${escapeHtml(item.example_sentence)}</p>
       <p class="word-meta">${escapeHtml(item.example_translation_zh)}</p>
-      ${controls ? `<button class="ghost status-toggle" data-id="${item.id}" data-status="${item.status === "active" ? "archived" : "active"}">${actionLabel}</button>` : ""}
+      ${controls ? `
+        <div class="card-actions">
+          <button class="ghost status-toggle" data-id="${item.id}" data-status="${item.status === "active" ? "archived" : "active"}">${actionLabel}</button>
+          <button class="ghost edit-toggle" data-id="${item.id}">Edit</button>
+          <button class="ghost danger delete-vocab" data-id="${item.id}">Delete</button>
+        </div>
+      ` : ""}
+      ${editForm}
     </article>
   `;
 }
@@ -95,10 +121,12 @@ async function loadVocabulary() {
   const language = $("#filter-language").value;
   const status = $("#filter-status").value;
   const source = $("#filter-source").value;
+  const q = $("#filter-search").value.trim();
   const query = new URLSearchParams();
   if (language) query.set("language", language);
   if (status) query.set("status", status);
   if (source) query.set("source", source);
+  if (q) query.set("q", q);
   state.vocabulary = await api(`/api/vocabulary?${query}`);
   renderVocabulary();
 }
@@ -205,6 +233,9 @@ function languageRow(language) {
         <label class="check"><input data-field="enabled" type="checkbox" ${language.enabled ? "checked" : ""} /> Enabled</label>
         <button class="ghost language-save" data-code="${escapeHtml(language.code)}">Save</button>
       </div>
+      <div class="card-actions" style="margin-top:10px">
+        <button class="ghost danger language-delete" data-code="${escapeHtml(language.code)}" data-name="${escapeHtml(language.name)}">Delete language</button>
+      </div>
     </article>
   `;
 }
@@ -248,6 +279,7 @@ function bindEvents() {
     notice("Lesson marked as sent.");
   });
 
+  $("#filter-search").addEventListener("input", loadVocabulary);
   $("#filter-language").addEventListener("change", loadVocabulary);
   $("#filter-status").addEventListener("change", loadVocabulary);
   $("#filter-source").addEventListener("change", loadVocabulary);
@@ -257,6 +289,12 @@ function bindEvents() {
     loadVocabulary();
   });
   $("#reload-vocab").addEventListener("click", loadVocabulary);
+
+  $("#show-add-word").addEventListener("click", () => {
+    const panel = $("#add-word-panel");
+    panel.classList.toggle("hidden");
+    $("#show-add-word").textContent = panel.classList.contains("hidden") ? "Add Word" : "Close";
+  });
 
   $("#vocab-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -275,14 +313,66 @@ function bindEvents() {
   });
 
   $("#vocab-list").addEventListener("click", async (event) => {
-    const button = event.target.closest(".status-toggle");
-    if (!button) return;
-    await api(`/api/vocabulary/${button.dataset.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status: button.dataset.status }),
-    });
-    await refreshAll();
-    notice("Vocabulary status updated.");
+    const statusBtn = event.target.closest(".status-toggle");
+    if (statusBtn) {
+      try {
+        await api(`/api/vocabulary/${statusBtn.dataset.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: statusBtn.dataset.status }),
+        });
+        await refreshAll();
+        notice("Vocabulary status updated.");
+      } catch (error) {
+        notice(error.message, "error");
+      }
+      return;
+    }
+
+    const editBtn = event.target.closest(".edit-toggle");
+    if (editBtn) {
+      const panel = document.querySelector(`.edit-panel[data-id="${editBtn.dataset.id}"]`);
+      if (panel) panel.classList.toggle("hidden");
+      return;
+    }
+
+    const cancelBtn = event.target.closest(".cancel-edit");
+    if (cancelBtn) {
+      cancelBtn.closest(".edit-panel").classList.add("hidden");
+      return;
+    }
+
+    const saveBtn = event.target.closest(".save-vocab-edit");
+    if (saveBtn) {
+      const panel = saveBtn.closest(".edit-panel");
+      const payload = {};
+      panel.querySelectorAll("[name]").forEach((input) => {
+        payload[input.name] = input.value;
+      });
+      try {
+        await api(`/api/vocabulary/${saveBtn.dataset.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        await refreshAll();
+        notice("Vocabulary updated.");
+      } catch (error) {
+        notice(error.message, "error");
+      }
+      return;
+    }
+
+    const deleteBtn = event.target.closest(".delete-vocab");
+    if (deleteBtn) {
+      if (!confirm("Delete this vocabulary item? This cannot be undone.")) return;
+      try {
+        await api(`/api/vocabulary/${deleteBtn.dataset.id}`, { method: "DELETE" });
+        await refreshAll();
+        notice("Vocabulary item deleted.");
+      } catch (error) {
+        notice(error.message, "error");
+      }
+      return;
+    }
   });
 
   $("#language-form").addEventListener("submit", async (event) => {
@@ -304,23 +394,40 @@ function bindEvents() {
   });
 
   $("#language-list").addEventListener("click", async (event) => {
-    const button = event.target.closest(".language-save");
-    if (!button) return;
-    const row = event.target.closest(".language-row");
-    const payload = {};
-    row.querySelectorAll("[data-field]").forEach((input) => {
-      payload[input.dataset.field] = input.type === "checkbox" ? input.checked : input.value;
-    });
-    try {
-      await api(`/api/languages/${button.dataset.code}`, {
-        method: "PATCH",
-        body: JSON.stringify(payload),
+    const saveBtn = event.target.closest(".language-save");
+    if (saveBtn) {
+      const row = event.target.closest(".language-row");
+      const payload = {};
+      row.querySelectorAll("[data-field]").forEach((input) => {
+        payload[input.dataset.field] = input.type === "checkbox" ? input.checked : input.value;
       });
-      await loadBootstrap();
-      await refreshAll();
-      notice("Language updated.");
-    } catch (error) {
-      notice(error.message, "error");
+      try {
+        await api(`/api/languages/${saveBtn.dataset.code}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        await loadBootstrap();
+        await refreshAll();
+        notice("Language updated.");
+      } catch (error) {
+        notice(error.message, "error");
+      }
+      return;
+    }
+
+    const deleteBtn = event.target.closest(".language-delete");
+    if (deleteBtn) {
+      const { code, name } = deleteBtn.dataset;
+      if (!confirm(`Delete "${name}"? This will also delete all vocabulary for this language. This cannot be undone.`)) return;
+      try {
+        await api(`/api/languages/${code}`, { method: "DELETE" });
+        await loadBootstrap();
+        await refreshAll();
+        notice(`Language "${name}" deleted.`);
+      } catch (error) {
+        notice(error.message, "error");
+      }
+      return;
     }
   });
 }

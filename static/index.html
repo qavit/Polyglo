@@ -57,9 +57,34 @@
             <h2>Review Queue</h2>
             <p>Approve AI-generated drafts before they can appear in lessons.</p>
           </div>
-          <button id="show-ai-drafts" class="primary">Review AI Drafts</button>
+          <div class="actions">
+            <button id="show-ai-drafts" class="ghost">AI Drafts</button>
+            <button id="show-add-word" class="primary">Add Word</button>
+          </div>
         </div>
-        <div class="toolbar">
+
+        <section class="panel hidden" id="add-word-panel">
+          <h2>Add Word</h2>
+          <form id="vocab-form" class="form-grid">
+            <label>Language<select name="language" required></select></label>
+            <label>Word<input name="word" required /></label>
+            <label>Reading<input name="reading" /></label>
+            <label>Part of speech<input name="part_of_speech" required /></label>
+            <label>Level<input name="level" required placeholder="C1 / A2 / N4" /></label>
+            <label>Status<select name="status"><option>draft</option><option>reviewed</option><option selected>active</option><option>archived</option></select></label>
+            <label class="wide">Chinese meaning<input name="meaning_zh" required /></label>
+            <label class="wide">English definition<input name="meaning_en" required /></label>
+            <label class="wide">Example<textarea name="example_sentence" required></textarea></label>
+            <label class="wide">Chinese example translation<textarea name="example_translation_zh" required></textarea></label>
+            <label class="wide">Collocation<textarea name="collocation"></textarea></label>
+            <label class="wide">Usage note<textarea name="note"></textarea></label>
+            <label class="wide">Mnemonic<textarea name="mnemonic"></textarea></label>
+            <button class="primary wide" type="submit">Add word</button>
+          </form>
+        </section>
+
+        <div class="toolbar" style="margin-top:14px">
+          <input id="filter-search" type="search" placeholder="Search words…" style="max-width:200px" />
           <select id="filter-language"></select>
           <select id="filter-status">
             <option value="">All statuses</option>
@@ -76,31 +101,11 @@
           </select>
           <button id="reload-vocab" class="ghost">Refresh</button>
         </div>
-        <div class="vocab-layout">
-          <section class="panel">
-            <h2>Add Word</h2>
-            <form id="vocab-form" class="form-grid">
-              <label>Language<select name="language" required></select></label>
-              <label>Word<input name="word" required /></label>
-              <label>Reading<input name="reading" /></label>
-              <label>Part of speech<input name="part_of_speech" required /></label>
-              <label>Level<input name="level" required placeholder="C1 / A2 / N4" /></label>
-              <label>Status<select name="status"><option>draft</option><option>reviewed</option><option selected>active</option><option>archived</option></select></label>
-              <label class="wide">Chinese meaning<input name="meaning_zh" required /></label>
-              <label class="wide">English definition<input name="meaning_en" required /></label>
-              <label class="wide">Example<textarea name="example_sentence" required></textarea></label>
-              <label class="wide">Chinese example translation<textarea name="example_translation_zh" required></textarea></label>
-              <label class="wide">Collocation<textarea name="collocation"></textarea></label>
-              <label class="wide">Usage note<textarea name="note"></textarea></label>
-              <label class="wide">Mnemonic<textarea name="mnemonic"></textarea></label>
-              <button class="primary wide" type="submit">Add word</button>
-            </form>
-          </section>
-          <section class="panel">
-            <h2>Vocabulary Bank</h2>
-            <div id="vocab-list" class="vocab-list"></div>
-          </section>
-        </div>
+
+        <section class="panel" style="margin-top:14px">
+          <h2>Vocabulary Bank</h2>
+          <div id="vocab-list" class="vocab-list" style="margin-top:12px"></div>
+        </section>
       </section>
 
       <section id="lessons" class="view">
