@@ -38,6 +38,10 @@ LEVEL_RANKS = {
     "N1": 5,
 }
 
+# Spaced-repetition interval ladder in days.
+# Stage advances on each successful recall; resets to 0 on failure.
+REVIEW_INTERVALS = [1, 3, 7, 21, 60, 180]
+
 
 def now_iso() -> str:
     return datetime.now().replace(microsecond=0).isoformat()
@@ -354,6 +358,32 @@ def generate_lesson(lesson_date: str, force: bool = False) -> dict[str, Any]:
         for language in enabled_languages:
             code = language["code"]
             minimum = language["minimum_level"]
+
+            # Priority 1: words whose next_review_date is due today (bypass duplicate window).
+            due_rows = conn.execute(
+                """
+                SELECT v.*, rr.next_review_date,
+                       (SELECT COUNT(*) FROM review_logs WHERE vocabulary_item_id = v.id) AS review_count
+                FROM vocabulary_items v
+                JOIN (
+                    SELECT r1.vocabulary_item_id, r1.next_review_date
+                    FROM review_logs r1
+                    WHERE r1.created_at = (
+                        SELECT MAX(r2.created_at) FROM review_logs r2
+                        WHERE r2.vocabulary_item_id = r1.vocabulary_item_id
+                    )
+                ) rr ON rr.vocabulary_item_id = v.id
+                WHERE v.language = ? AND v.status = 'active' AND rr.next_review_date <= ?
+                ORDER BY rr.next_review_date ASC
+                """,
+                (code, lesson_date),
+            ).fetchall()
+            allowed_due = [row for row in due_rows if level_allowed(row["level"], minimum)]
+            if allowed_due:
+                selected.append(allowed_due[0])
+                continue
+
+            # Priority 2: new words not seen within the duplicate avoidance window.
             rows = conn.execute(
                 """
                 SELECT v.*,
@@ -582,15 +612,11 @@ def generation_plan(conn: sqlite3.Connection) -> dict[str, Any]:
     settings = get_settings(conn)
     enabled_languages = list_languages(conn, enabled_only=True)
     existing_rows = conn.execute(
-        """
-        SELECT language, word, level, status, source
-        FROM vocabulary_items
-        ORDER BY language, word
-        """
+        "SELECT language, word FROM vocabulary_items ORDER BY language, word"
     ).fetchall()
     recent_rows = conn.execute(
         """
-        SELECT dl.lesson_date, v.language, v.word
+        SELECT v.language, v.word
         FROM daily_lesson_items dli
         JOIN daily_lessons dl ON dl.id = dli.lesson_id
         JOIN vocabulary_items v ON v.id = dli.vocabulary_item_id
@@ -601,12 +627,12 @@ def generation_plan(conn: sqlite3.Connection) -> dict[str, Any]:
             (date.today() - timedelta(days=settings["duplicate_avoidance_days"])).isoformat(),
         ),
     ).fetchall()
-    existing_by_language: dict[str, list[dict[str, Any]]] = {}
+    existing_by_language: dict[str, list[str]] = {}
     for row in existing_rows:
-        existing_by_language.setdefault(row["language"], []).append(row_to_dict(row))
-    recent_by_language: dict[str, list[dict[str, Any]]] = {}
+        existing_by_language.setdefault(row["language"], []).append(row["word"])
+    recent_by_language: dict[str, list[str]] = {}
     for row in recent_rows:
-        recent_by_language.setdefault(row["language"], []).append(row_to_dict(row))
+        recent_by_language.setdefault(row["language"], []).append(row["word"])
     return {
         "date": today_iso(),
         "duplicate_avoidance_days": settings["duplicate_avoidance_days"],
@@ -774,6 +800,9 @@ def create_vocabulary_candidates(payload: dict[str, Any]) -> dict[str, Any]:
     created = []
     skipped = []
     with connect() as conn:
+        settings = get_settings(conn)
+        require_review = settings.get("require_review_for_ai_words", "true") == "true"
+        auto_status = "draft" if require_review else "active"
         for item in items:
             if not isinstance(item, dict):
                 skipped.append({"reason": "Item is not an object", "item": item})
@@ -781,7 +810,7 @@ def create_vocabulary_candidates(payload: dict[str, Any]) -> dict[str, Any]:
             candidate = {
                 **item,
                 "source": item.get("source", "ai"),
-                "status": item.get("status", "draft"),
+                "status": item.get("status", auto_status),
             }
             duplicate = conn.execute(
                 """
@@ -847,6 +876,25 @@ def update_vocabulary(item_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         return row_to_dict(row)
 
 
+def _compute_next_review(
+    conn: sqlite3.Connection,
+    item_id: str,
+    recall_success: bool,
+    review_date: str,
+) -> str:
+    if not recall_success:
+        days = REVIEW_INTERVALS[0]
+    else:
+        past_successes = conn.execute(
+            "SELECT COUNT(*) AS count FROM review_logs WHERE vocabulary_item_id = ? AND recall_success = 1",
+            (item_id,),
+        ).fetchone()["count"]
+        stage = min(past_successes, len(REVIEW_INTERVALS) - 1)
+        days = REVIEW_INTERVALS[stage]
+    base = datetime.fromisoformat(review_date).date()
+    return (base + timedelta(days=days)).isoformat()
+
+
 def create_review(payload: dict[str, Any]) -> dict[str, Any]:
     item_id = payload.get("vocabulary_item_id")
     if not item_id:
@@ -854,11 +902,13 @@ def create_review(payload: dict[str, Any]) -> dict[str, Any]:
     rating = int(payload.get("rating", 0))
     if rating < 0 or rating > 5:
         raise ValueError("rating must be between 0 and 5")
+    recall_success = bool(payload.get("recall_success"))
+    review_date = payload.get("review_date") or today_iso()
     next_review = payload.get("next_review_date")
-    if not next_review:
-        next_review = (date.today() + timedelta(days=3 if rating < 4 else 7)).isoformat()
     review_id = str(uuid.uuid4())
     with connect() as conn:
+        if not next_review:
+            next_review = _compute_next_review(conn, item_id, recall_success, review_date)
         conn.execute(
             """
             INSERT INTO review_logs (
@@ -870,9 +920,9 @@ def create_review(payload: dict[str, Any]) -> dict[str, Any]:
             (
                 review_id,
                 item_id,
-                payload.get("review_date") or today_iso(),
+                review_date,
                 rating,
-                1 if payload.get("recall_success") else 0,
+                1 if recall_success else 0,
                 payload.get("note", ""),
                 next_review,
                 now_iso(),
