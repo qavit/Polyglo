@@ -684,7 +684,10 @@ def generation_plan(conn: sqlite3.Connection) -> dict[str, Any]:
     return {
         "date": today_iso(),
         "duplicate_avoidance_days": settings["duplicate_avoidance_days"],
-        "candidate_defaults": {"source": "ai", "status": "draft"},
+        "candidate_defaults": {
+            "source": "ai",
+            "status": "draft" if settings.get("require_review_for_ai_words", "true") == "true" else "active",
+        },
         "languages": enabled_languages,
         "existing_words": existing_by_language,
         "recent_lesson_words": recent_by_language,
@@ -904,7 +907,7 @@ def create_vocabulary_candidates(payload: dict[str, Any]) -> dict[str, Any]:
             candidate = {
                 **item,
                 "source": item.get("source", "ai"),
-                "status": item.get("status", auto_status),
+                "status": auto_status,
             }
             duplicate = conn.execute(
                 """
