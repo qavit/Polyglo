@@ -8,10 +8,10 @@ const state = {
 
 const titles = {
   dashboard: ["Dashboard", "今日排程、詞庫狀態與最近學習紀錄"],
-  vocabulary: ["Vocabulary Bank", "管理五語詞庫、程度、狀態與例句"],
+  vocabulary: ["Vocabulary Bank", "管理任意語言的詞庫、程度、狀態與例句"],
   lessons: ["Daily Lessons", "產生、預覽與標記每日 Markdown"],
   reviews: ["Review", "回填熟悉度、召回狀態與下次複習日期"],
-  settings: ["Settings", "MVP 的排程與語言門檻設定"],
+  settings: ["Settings", "管理排程與可用語言"],
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -41,6 +41,9 @@ function languageOptions(includeAll = false) {
   const options = includeAll ? ['<option value="">All languages</option>'] : [];
   for (const [code, meta] of Object.entries(languages)) {
     options.push(`<option value="${code}">${meta.name}</option>`);
+  }
+  if (!includeAll && options.length === 0) {
+    options.push('<option value="">Add a language in Settings first</option>');
   }
   return options.join("");
 }
@@ -178,14 +181,38 @@ function renderReviews() {
 
 function renderSettings() {
   const settings = state.bootstrap.settings;
+  const languageRows = state.bootstrap.languageList || Object.values(state.bootstrap.languages);
   const rows = [
     ["Daily time", settings.daily_schedule_time],
     ["Duplicate avoidance", `${settings.duplicate_avoidance_days} days`],
     ["AI words need review", settings.require_review_for_ai_words],
-    ["Enabled languages", settings.enabled_languages.map(formatLanguage).join(", ")],
-    ...settings.enabled_languages.map((code) => [`Minimum ${formatLanguage(code)}`, settings[`minimum_level_${code}`]]),
+    ["Enabled languages", languageRows.filter((language) => language.enabled).map((language) => language.name).join(", ") || "None"],
   ];
   $("#settings-list").innerHTML = rows.map(([key, value]) => `<div class="setting-row"><strong>${key}</strong><span>${value}</span></div>`).join("");
+  $("#language-list").innerHTML = languageRows.length
+    ? languageRows.map(languageRow).join("")
+    : `<div class="lesson-empty">No languages yet. Add one to start building your vocabulary bank.</div>`;
+}
+
+function languageRow(language) {
+  return `
+    <article class="word-card language-row" data-code="${escapeHtml(language.code)}">
+      <header>
+        <div>
+          <div class="word-title">${escapeHtml(language.name)}</div>
+          <div class="word-meta">${escapeHtml(language.code)} · minimum ${escapeHtml(language.minimum_level || "any")} · sort ${language.sort_order}</div>
+        </div>
+        <span class="badge ${language.enabled ? "" : "warm"}">${language.enabled ? "enabled" : "disabled"}</span>
+      </header>
+      <div class="language-actions">
+        <label>Name<input data-field="name" value="${escapeHtml(language.name)}" /></label>
+        <label>Minimum<input data-field="minimum_level" value="${escapeHtml(language.minimum_level || "")}" /></label>
+        <label>Sort<input data-field="sort_order" type="number" value="${language.sort_order}" /></label>
+        <label class="check"><input data-field="enabled" type="checkbox" ${language.enabled ? "checked" : ""} /> Enabled</label>
+        <button class="ghost language-save" data-code="${escapeHtml(language.code)}">Save</button>
+      </div>
+    </article>
+  `;
 }
 
 async function refreshAll() {
@@ -268,6 +295,44 @@ function bindEvents() {
       $('[name="review_date"]').value = state.bootstrap.today;
       await refreshAll();
       notice("Review saved.");
+    } catch (error) {
+      notice(error.message, "error");
+    }
+  });
+
+  $("#language-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const payload = Object.fromEntries(form.entries());
+    payload.enabled = form.has("enabled");
+    try {
+      await api("/api/languages", { method: "POST", body: JSON.stringify(payload) });
+      event.currentTarget.reset();
+      event.currentTarget.elements.enabled.checked = true;
+      await loadBootstrap();
+      await refreshAll();
+      notice("Language added.");
+    } catch (error) {
+      notice(error.message, "error");
+    }
+  });
+
+  $("#language-list").addEventListener("click", async (event) => {
+    const button = event.target.closest(".language-save");
+    if (!button) return;
+    const row = event.target.closest(".language-row");
+    const payload = {};
+    row.querySelectorAll("[data-field]").forEach((input) => {
+      payload[input.dataset.field] = input.type === "checkbox" ? input.checked : input.value;
+    });
+    try {
+      await api(`/api/languages/${button.dataset.code}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+      await loadBootstrap();
+      await refreshAll();
+      notice("Language updated.");
     } catch (error) {
       notice(error.message, "error");
     }

@@ -9,10 +9,10 @@
   <body>
     <aside class="sidebar">
       <div class="brand">
-        <span class="brand-mark">P</span>
-        <div>
-          <strong>Polyglo</strong>
-          <small>Daily Polyglot Scheduler</small>
+          <span class="brand-mark">P</span>
+          <div>
+            <strong>Polyglo</strong>
+          <small>Daily Vocabulary Scheduler</small>
         </div>
       </div>
       <nav class="tabs" aria-label="Primary">
@@ -119,7 +119,24 @@
       </section>
 
       <section id="settings" class="view">
-        <section class="panel settings-panel">
+        <div class="vocab-layout">
+          <section class="panel">
+            <h2>Add Language</h2>
+            <form id="language-form" class="form-grid">
+              <label>Code<input name="code" required placeholder="en, fr, ko, yue" /></label>
+              <label>Name<input name="name" required placeholder="English, French, Korean" /></label>
+              <label>Minimum level<input name="minimum_level" placeholder="Optional: A2, N4, beginner" /></label>
+              <label>Sort order<input name="sort_order" type="number" placeholder="Optional" /></label>
+              <label class="check"><input type="checkbox" name="enabled" checked /> Include in daily lessons</label>
+              <button class="primary wide" type="submit">Add language</button>
+            </form>
+          </section>
+          <section class="panel">
+            <h2>Languages</h2>
+            <div id="language-list" class="language-list"></div>
+          </section>
+        </div>
+        <section class="panel settings-panel settings-offset">
           <h2>Current MVP Settings</h2>
           <div id="settings-list" class="settings-list"></div>
         </section>

@@ -1,14 +1,11 @@
 # Polyglo
 
-Polyglo is a local-first Daily Polyglot Vocabulary Scheduler.
+Polyglo is a local-first daily vocabulary scheduler.
 
-It manages a five-language vocabulary bank and generates a daily lesson with:
-
-- English: C1+
-- Indonesian: A2+
-- Japanese: JLPT N4+
-- German: B1+
-- Spanish: A2+
+It manages vocabulary banks for any language and generates a daily lesson from
+the enabled languages you configure. Each language can have its own optional
+minimum level, such as `A2`, `B1`, `N4`, `beginner`, or any label that fits your
+learning system.
 
 The MVP uses only Python standard library modules and SQLite.
 
@@ -24,17 +21,22 @@ Then open:
 http://127.0.0.1:8000
 ```
 
-The `--seed` flag adds sample vocabulary if it is not already present.
+The `--seed` flag adds sample languages and vocabulary if they are not already
+present. The samples are only demo data; Polyglo itself is not limited to those
+languages.
 
 ## API
 
 - `GET /api/today`
 - `GET /api/dashboard`
 - `GET /api/vocabulary`
+- `GET /api/languages`
 - `GET /api/lessons`
 - `GET /api/reviews`
 - `POST /api/lessons/generate`
 - `POST /api/lessons/:id/mark-sent`
+- `POST /api/languages`
+- `PATCH /api/languages/:code`
 - `POST /api/vocabulary`
 - `PATCH /api/vocabulary/:id`
 - `POST /api/reviews`
@@ -57,8 +59,13 @@ polyglo.sqlite3
 
 Tables:
 
+- `languages`
 - `vocabulary_items`
 - `daily_lessons`
 - `daily_lesson_items`
 - `review_logs`
 - `settings`
+
+## License
+
+MIT

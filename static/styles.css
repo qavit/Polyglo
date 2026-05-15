@@ -361,6 +361,23 @@ label {
   max-width: 760px;
 }
 
+.settings-offset {
+  margin-top: 16px;
+}
+
+.language-list {
+  display: grid;
+  gap: 10px;
+}
+
+.language-actions {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) 90px 110px auto;
+  gap: 10px;
+  align-items: end;
+  margin-top: 12px;
+}
+
 .settings-list {
   display: grid;
   gap: 10px;
@@ -420,7 +437,8 @@ label {
 
   .word-card header,
   .lesson-card header,
-  .log-row {
+  .log-row,
+  .language-actions {
     display: grid;
   }
 }

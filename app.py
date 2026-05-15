@@ -16,7 +16,7 @@ ROOT = Path(__file__).parent
 STATIC_DIR = ROOT / "static"
 DB_PATH = ROOT / "polyglo.sqlite3"
 
-LANGUAGES = {
+DEFAULT_SEED_LANGUAGES = {
     "en": {"name": "English", "minimum_level": "C1", "sort": 1},
     "id": {"name": "Indonesian", "minimum_level": "A2", "sort": 2},
     "ja": {"name": "Japanese", "minimum_level": "N4", "sort": 3},
@@ -82,6 +82,16 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS languages (
+                code TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                minimum_level TEXT NOT NULL DEFAULT '',
+                sort_order INTEGER NOT NULL DEFAULT 100,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS daily_lessons (
                 id TEXT PRIMARY KEY,
                 lesson_date TEXT NOT NULL UNIQUE,
@@ -128,7 +138,6 @@ def init_db() -> None:
             "daily_schedule_time": "08:00",
             "duplicate_avoidance_days": "30",
             "require_review_for_ai_words": "true",
-            "enabled_languages": json.dumps(list(LANGUAGES.keys())),
         }
         for key, value in defaults.items():
             conn.execute(
@@ -139,15 +148,44 @@ def init_db() -> None:
                 """,
                 (key, value, now_iso()),
             )
-        for code, meta in LANGUAGES.items():
-            conn.execute(
-                """
-                INSERT INTO settings (key, value, updated_at)
-                VALUES (?, ?, ?)
-                ON CONFLICT(key) DO NOTHING
-                """,
-                (f"minimum_level_{code}", meta["minimum_level"], now_iso()),
+        migrate_languages_from_settings(conn)
+
+
+def migrate_languages_from_settings(conn: sqlite3.Connection) -> None:
+    existing = conn.execute("SELECT COUNT(*) AS count FROM languages").fetchone()["count"]
+    if existing:
+        return
+    enabled_row = conn.execute(
+        "SELECT value FROM settings WHERE key = 'enabled_languages'"
+    ).fetchone()
+    if not enabled_row:
+        return
+    try:
+        enabled_codes = json.loads(enabled_row["value"])
+    except json.JSONDecodeError:
+        enabled_codes = []
+    for index, code in enumerate(enabled_codes, start=1):
+        meta = DEFAULT_SEED_LANGUAGES.get(code, {})
+        minimum_row = conn.execute(
+            "SELECT value FROM settings WHERE key = ?", (f"minimum_level_{code}",)
+        ).fetchone()
+        conn.execute(
+            """
+            INSERT INTO languages (
+                code, name, minimum_level, sort_order, enabled, created_at, updated_at
             )
+            VALUES (?, ?, ?, ?, 1, ?, ?)
+            ON CONFLICT(code) DO NOTHING
+            """,
+            (
+                code,
+                meta.get("name", code),
+                minimum_row["value"] if minimum_row else meta.get("minimum_level", ""),
+                meta.get("sort", index),
+                now_iso(),
+                now_iso(),
+            ),
+        )
 
 
 def seed_db() -> int:
@@ -165,6 +203,24 @@ def seed_db() -> int:
     ]
     inserted = 0
     with connect() as conn:
+        for code, meta in DEFAULT_SEED_LANGUAGES.items():
+            conn.execute(
+                """
+                INSERT INTO languages (
+                    code, name, minimum_level, sort_order, enabled, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, 1, ?, ?)
+                ON CONFLICT(code) DO NOTHING
+                """,
+                (
+                    code,
+                    meta["name"],
+                    meta["minimum_level"],
+                    meta["sort"],
+                    now_iso(),
+                    now_iso(),
+                ),
+            )
         for item in samples:
             exists = conn.execute(
                 "SELECT 1 FROM vocabulary_items WHERE language = ? AND word = ?",
@@ -190,13 +246,35 @@ def seed_db() -> int:
 def get_settings(conn: sqlite3.Connection) -> dict[str, Any]:
     rows = conn.execute("SELECT key, value FROM settings").fetchall()
     settings = {row["key"]: row["value"] for row in rows}
-    settings["enabled_languages"] = json.loads(settings.get("enabled_languages", "[]"))
     settings["duplicate_avoidance_days"] = int(settings.get("duplicate_avoidance_days", "30"))
     return settings
 
 
+def list_languages(conn: sqlite3.Connection, enabled_only: bool = False) -> list[dict[str, Any]]:
+    where = "WHERE enabled = 1" if enabled_only else ""
+    rows = conn.execute(
+        f"""
+        SELECT code, name, minimum_level, sort_order, enabled
+        FROM languages
+        {where}
+        ORDER BY sort_order, name
+        """
+    ).fetchall()
+    return [row_to_dict(row) for row in rows]
+
+
+def language_map(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+    return {row["code"]: row for row in list_languages(conn)}
+
+
 def level_allowed(level: str, minimum: str) -> bool:
-    return LEVEL_RANKS.get(level.upper(), 0) >= LEVEL_RANKS.get(minimum.upper(), 0)
+    if not minimum:
+        return True
+    item_level = level.upper()
+    minimum_level = minimum.upper()
+    if item_level in LEVEL_RANKS and minimum_level in LEVEL_RANKS:
+        return LEVEL_RANKS[item_level] >= LEVEL_RANKS[minimum_level]
+    return item_level == minimum_level
 
 
 def lesson_payload(conn: sqlite3.Connection, lesson_id: str) -> dict[str, Any] | None:
@@ -218,11 +296,15 @@ def lesson_payload(conn: sqlite3.Connection, lesson_id: str) -> dict[str, Any] |
     return payload
 
 
-def render_lesson_markdown(lesson_date: str, items: list[sqlite3.Row | dict[str, Any]]) -> str:
-    lines = ["### Daily Polyglot Vocabulary", f"Date: {lesson_date}", ""]
+def render_lesson_markdown(
+    lesson_date: str,
+    items: list[sqlite3.Row | dict[str, Any]],
+    languages: dict[str, dict[str, Any]],
+) -> str:
+    lines = ["### Daily Vocabulary", f"Date: {lesson_date}", ""]
     for index, item in enumerate(items, start=1):
         data = row_to_dict(item) if isinstance(item, sqlite3.Row) else item
-        lang = LANGUAGES[data["language"]]["name"]
+        lang = languages.get(data["language"], {}).get("name", data["language"])
         heading = f"#### {index}. {lang} - {data['level']}"
         reading = f" ({data['reading']})" if data.get("reading") else ""
         lines.extend(
@@ -259,14 +341,19 @@ def generate_lesson(lesson_date: str, force: bool = False) -> dict[str, Any]:
             conn.execute("DELETE FROM daily_lessons WHERE id = ?", (existing["id"],))
 
         settings = get_settings(conn)
+        enabled_languages = list_languages(conn, enabled_only=True)
+        if not enabled_languages:
+            raise ValueError("No enabled languages. Add one in Settings before generating a lesson.")
+        languages = {row["code"]: row for row in enabled_languages}
         avoid_since = (
             datetime.fromisoformat(lesson_date).date()
             - timedelta(days=settings["duplicate_avoidance_days"])
         ).isoformat()
         selected: list[sqlite3.Row] = []
 
-        for code in settings["enabled_languages"]:
-            minimum = settings.get(f"minimum_level_{code}", LANGUAGES[code]["minimum_level"])
+        for language in enabled_languages:
+            code = language["code"]
+            minimum = language["minimum_level"]
             rows = conn.execute(
                 """
                 SELECT v.*,
@@ -291,7 +378,8 @@ def generate_lesson(lesson_date: str, force: bool = False) -> dict[str, Any]:
             ).fetchall()
             allowed = [row for row in rows if level_allowed(row["level"], minimum)]
             if not allowed:
-                raise ValueError(f"No active vocabulary item found for {LANGUAGES[code]['name']} at {minimum}+")
+                level_label = f" at {minimum}+" if minimum else ""
+                raise ValueError(f"No active vocabulary item found for {language['name']}{level_label}")
             selected.append(allowed[0])
 
         lesson_id = str(uuid.uuid4())
@@ -317,11 +405,11 @@ def generate_lesson(lesson_date: str, force: bool = False) -> dict[str, Any]:
                     lesson_id,
                     row["id"],
                     row["language"],
-                    LANGUAGES[row["language"]]["sort"],
+                    languages.get(row["language"], {}).get("sort_order", 100),
                     now_iso(),
                 ),
             )
-        message = render_lesson_markdown(lesson_date, selected)
+        message = render_lesson_markdown(lesson_date, selected, languages)
         conn.execute(
             "UPDATE daily_lessons SET generated_message = ?, updated_at = ? WHERE id = ?",
             (message, now_iso(), lesson_id),
@@ -359,13 +447,18 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             with connect() as conn:
                 if parsed.path == "/api/bootstrap":
+                    languages = language_map(conn)
                     self.send_json(
                         {
                             "settings": get_settings(conn),
-                            "languages": LANGUAGES,
+                            "languages": languages,
+                            "languageList": list(languages.values()),
                             "today": today_iso(),
                         }
                     )
+                    return
+                if parsed.path == "/api/languages":
+                    self.send_json(list_languages(conn))
                     return
                 if parsed.path == "/api/dashboard":
                     self.send_json(dashboard_payload(conn))
@@ -400,6 +493,9 @@ class Handler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/vocabulary":
                 self.send_json(create_vocabulary(self.read_json()), 201)
                 return
+            if parsed.path == "/api/languages":
+                self.send_json(create_language(self.read_json()), 201)
+                return
             if parsed.path == "/api/reviews":
                 self.send_json(create_review(self.read_json()), 201)
                 return
@@ -417,6 +513,10 @@ class Handler(SimpleHTTPRequestHandler):
             if parsed.path.startswith("/api/vocabulary/"):
                 item_id = parsed.path.split("/")[3]
                 self.send_json(update_vocabulary(item_id, self.read_json()))
+                return
+            if parsed.path.startswith("/api/languages/"):
+                code = parsed.path.split("/")[3]
+                self.send_json(update_language(code, self.read_json()))
                 return
             self.send_json({"error": "Not found"}, 404)
         except Exception as exc:
@@ -470,6 +570,68 @@ def list_vocabulary(conn: sqlite3.Connection, query: dict[str, list[str]]) -> li
         params,
     ).fetchall()
     return [row_to_dict(row) for row in rows]
+
+
+def create_language(payload: dict[str, Any]) -> dict[str, Any]:
+    code = (payload.get("code") or "").strip().lower()
+    name = (payload.get("name") or "").strip()
+    if not code or not name:
+        raise ValueError("Language code and name are required")
+    with connect() as conn:
+        max_sort = conn.execute(
+            "SELECT COALESCE(MAX(sort_order), 0) AS max_sort FROM languages"
+        ).fetchone()["max_sort"]
+        conn.execute(
+            """
+            INSERT INTO languages (
+                code, name, minimum_level, sort_order, enabled, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                code,
+                name,
+                payload.get("minimum_level", "").strip(),
+                int(payload.get("sort_order") or max_sort + 1),
+                1 if payload.get("enabled", True) else 0,
+                now_iso(),
+                now_iso(),
+            ),
+        )
+        row = conn.execute(
+            "SELECT code, name, minimum_level, sort_order, enabled FROM languages WHERE code = ?",
+            (code,),
+        ).fetchone()
+        return row_to_dict(row)
+
+
+def update_language(code: str, payload: dict[str, Any]) -> dict[str, Any]:
+    allowed = {"name", "minimum_level", "sort_order", "enabled"}
+    fields = [key for key in payload if key in allowed]
+    if not fields:
+        raise ValueError("No valid fields supplied")
+    values: list[Any] = []
+    assignments = []
+    for field in fields:
+        assignments.append(f"{field} = ?")
+        if field == "enabled":
+            values.append(1 if payload[field] else 0)
+        elif field == "sort_order":
+            values.append(int(payload[field]))
+        else:
+            values.append(str(payload[field]).strip())
+    with connect() as conn:
+        conn.execute(
+            f"UPDATE languages SET {', '.join(assignments)}, updated_at = ? WHERE code = ?",
+            (*values, now_iso(), code),
+        )
+        row = conn.execute(
+            "SELECT code, name, minimum_level, sort_order, enabled FROM languages WHERE code = ?",
+            (code,),
+        ).fetchone()
+        if not row:
+            raise ValueError("Language not found")
+        return row_to_dict(row)
 
 
 def list_lessons(conn: sqlite3.Connection) -> list[dict[str, Any]]:
