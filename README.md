@@ -49,6 +49,15 @@ curl -X POST http://127.0.0.1:8000/api/lessons/generate \
   -d '{"date":"2026-05-16"}'
 ```
 
+## OpenClaw
+
+Use OpenClaw as the daily trigger and delivery runner. Polyglo should remain the
+source of truth for vocabulary, generated lessons, review history, and language
+settings.
+
+See [docs/openclaw.md](docs/openclaw.md) for the recommended daily 8:00 AM
+workflow, prompt, API calls, and failure handling.
+
 ## Data
 
 SQLite database:
