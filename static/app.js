@@ -17,6 +17,22 @@ const titles = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
+const svg = (path, opts = "") =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${opts}>${path}</svg>`;
+
+const icon = {
+  archive: svg(`<rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9"/><path d="M10 13h4"/>`),
+  check:   svg(`<polyline points="20 6 9 17 4 12"/>`, `stroke-width="2.5"`),
+  edit:    svg(`<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/>`),
+  trash:   svg(`<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>`),
+  plus:    svg(`<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>`, `stroke-width="2.5"`),
+  x:       svg(`<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>`, `stroke-width="2.5"`),
+  refresh: svg(`<path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>`),
+  send:    svg(`<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>`),
+  zap:     svg(`<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>`, `stroke-width="2.5"`),
+  star:    svg(`<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>`),
+};
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json" },
@@ -61,7 +77,12 @@ function formatLanguage(code) {
 }
 
 function wordCard(item, controls = true) {
-  const actionLabel = item.status === "active" ? "Archive" : item.source === "ai" && item.status === "draft" ? "Approve" : "Activate";
+  const isActive = item.status === "active";
+  const isAiDraft = item.source === "ai" && item.status === "draft";
+  const statusIcon = isActive ? icon.archive : icon.check;
+  const statusTooltip = isActive ? "Archive" : isAiDraft ? "Approve" : "Activate";
+  const statusTarget = isActive ? "archived" : "active";
+
   const editForm = controls ? `
     <div class="edit-panel hidden" data-id="${item.id}">
       <div class="form-grid" style="margin-top:12px">
@@ -76,11 +97,12 @@ function wordCard(item, controls = true) {
         <label class="wide">Collocation<textarea name="collocation">${escapeHtml(item.collocation || "")}</textarea></label>
         <label class="wide">Note<textarea name="note">${escapeHtml(item.note || "")}</textarea></label>
         <label class="wide">Mnemonic<textarea name="mnemonic">${escapeHtml(item.mnemonic || "")}</textarea></label>
-        <button class="primary save-vocab-edit" data-id="${item.id}">Save</button>
-        <button class="ghost cancel-edit">Cancel</button>
+        <button class="primary btn-icon save-vocab-edit" data-id="${item.id}">${icon.check} Save</button>
+        <button class="ghost btn-icon cancel-edit">${icon.x} Cancel</button>
       </div>
     </div>
   ` : "";
+
   return `
     <article class="word-card" data-id="${item.id}">
       <header>
@@ -91,13 +113,13 @@ function wordCard(item, controls = true) {
         <span class="badge ${item.status === "draft" ? "warm" : ""}">${escapeHtml(item.status)}</span>
       </header>
       <p class="word-meta">${escapeHtml(item.meaning_zh)} · ${escapeHtml(item.meaning_en)}</p>
-      <p>${escapeHtml(item.example_sentence)}</p>
+      <p class="word-example">${escapeHtml(item.example_sentence)}</p>
       <p class="word-meta">${escapeHtml(item.example_translation_zh)}</p>
       ${controls ? `
         <div class="card-actions">
-          <button class="ghost status-toggle" data-id="${item.id}" data-status="${item.status === "active" ? "archived" : "active"}">${actionLabel}</button>
-          <button class="ghost edit-toggle" data-id="${item.id}">Edit</button>
-          <button class="ghost danger delete-vocab" data-id="${item.id}">Delete</button>
+          <button class="icon-btn status-toggle" data-id="${item.id}" data-status="${statusTarget}" data-tooltip="${statusTooltip}">${statusIcon}</button>
+          <button class="icon-btn edit-toggle" data-id="${item.id}" data-tooltip="Edit">${icon.edit}</button>
+          <button class="icon-btn danger delete-vocab" data-id="${item.id}" data-tooltip="Delete">${icon.trash}</button>
         </div>
       ` : ""}
       ${editForm}
@@ -234,7 +256,7 @@ function languageRow(language) {
         <button class="ghost language-save" data-code="${escapeHtml(language.code)}">Save</button>
       </div>
       <div class="card-actions" style="margin-top:10px">
-        <button class="ghost danger language-delete" data-code="${escapeHtml(language.code)}" data-name="${escapeHtml(language.name)}">Delete language</button>
+        <button class="ghost btn-icon danger language-delete" data-code="${escapeHtml(language.code)}" data-name="${escapeHtml(language.name)}">${icon.trash} Delete language</button>
       </div>
     </article>
   `;
@@ -293,7 +315,9 @@ function bindEvents() {
   $("#show-add-word").addEventListener("click", () => {
     const panel = $("#add-word-panel");
     panel.classList.toggle("hidden");
-    $("#show-add-word").textContent = panel.classList.contains("hidden") ? "Add Word" : "Close";
+    const isOpen = !panel.classList.contains("hidden");
+    const btn = $("#show-add-word");
+    btn.innerHTML = isOpen ? `${icon.x} Close` : `${icon.plus} Add Word`;
   });
 
   $("#vocab-form").addEventListener("submit", async (event) => {

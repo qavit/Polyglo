@@ -81,18 +81,27 @@ button {
 
 .tab {
   width: 100%;
-  min-height: 42px;
-  padding: 10px 12px;
+  min-height: 40px;
+  padding: 9px 12px;
   border-radius: 8px;
   background: transparent;
   color: var(--muted);
   text-align: left;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+  transition: background 0.12s, color 0.12s;
+}
+
+.tab:hover:not(.active) {
+  background: rgba(31, 122, 104, 0.07);
+  color: var(--ink);
 }
 
 .tab.active {
   background: var(--soft);
   color: var(--accent-strong);
   font-weight: 700;
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 main {
@@ -115,7 +124,9 @@ p {
 }
 
 h1 {
-  font-size: 28px;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
   line-height: 1.2;
 }
 
@@ -178,10 +189,13 @@ textarea {
 
 .primary,
 .ghost {
-  min-height: 40px;
-  padding: 0 14px;
-  border-radius: 8px;
+  min-height: 38px;
+  padding: 0 13px;
+  border-radius: 7px;
   font-weight: 700;
+  font-size: 13.5px;
+  letter-spacing: -0.01em;
+  transition: background 0.12s, color 0.12s, box-shadow 0.12s;
 }
 
 .primary {
@@ -191,12 +205,18 @@ textarea {
 
 .primary:hover {
   background: var(--accent-strong);
+  box-shadow: 0 2px 8px rgba(31, 122, 104, 0.25);
 }
 
 .ghost {
   border: 1px solid var(--line);
   background: #fffefa;
   color: var(--ink);
+}
+
+.ghost:hover {
+  background: var(--bg);
+  border-color: #c8c0b5;
 }
 
 .view {
@@ -223,14 +243,28 @@ textarea {
 }
 
 .metric {
-  min-height: 96px;
-  padding: 16px;
+  min-height: 90px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 4px;
 }
 
 .metric strong {
   display: block;
-  margin-top: 10px;
-  font-size: 28px;
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.metric span {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
 }
 
 .metric span,
@@ -274,6 +308,12 @@ textarea {
   border-radius: 8px;
   background: #fffefa;
   padding: 13px;
+  transition: box-shadow 0.15s;
+}
+
+.word-card:hover,
+.lesson-card:hover {
+  box-shadow: 0 4px 16px rgba(49, 43, 34, 0.1);
 }
 
 .word-card header,
@@ -478,11 +518,15 @@ label {
 .panel-note { font-size: 0.85rem; color: var(--text-muted, #666); margin-bottom: 1rem; }
 .panel-note code { font-size: 0.8rem; background: #f0f0f0; padding: 0.1em 0.3em; border-radius: 3px; }
 
+.word-example {
+  font-style: italic;
+  line-height: 1.5;
+}
+
 .card-actions {
   display: flex;
-  gap: 8px;
+  gap: 4px;
   margin-top: 10px;
-  flex-wrap: wrap;
 }
 
 .edit-panel {
@@ -491,10 +535,78 @@ label {
   border-top: 1px solid var(--line);
 }
 
-button.danger {
+/* icon-only action buttons */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+
+.icon-btn:hover {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.icon-btn.danger {
+  color: #c97542;
+}
+
+.icon-btn.danger:hover {
+  background: #f6e8dd;
   color: var(--warm);
 }
 
-button.danger:hover {
-  background: #f6e8dd;
+/* text + icon buttons */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* CSS tooltips */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::before,
+[data-tooltip]::after {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s 0.35s;
+  z-index: 100;
+}
+
+[data-tooltip]::before {
+  content: '';
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #25221d;
+  bottom: calc(100% + 0px);
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  transform: translateX(-50%);
+  background: #25221d;
+  color: #f7f1e7;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+
+[data-tooltip]:hover::before,
+[data-tooltip]:hover::after {
+  opacity: 1;
 }
