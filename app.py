@@ -512,6 +512,11 @@ class Handler(SimpleHTTPRequestHandler):
                 if parsed.path == "/api/reviews":
                     self.send_json(list_reviews(conn))
                     return
+                if parsed.path == "/api/quiz":
+                    query = parse_qs(parsed.query)
+                    quiz_date = query.get("date", [today_iso()])[0]
+                    self.send_json(quiz_payload(conn, quiz_date))
+                    return
                 parts = parsed.path.split("/")
                 if len(parts) == 5 and parts[2] == "lessons" and parts[4] == "markdown":
                     lesson = lesson_payload(conn, parts[3])
@@ -756,6 +761,32 @@ def list_reviews(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         """
     ).fetchall()
     return [row_to_dict(row) for row in rows]
+
+
+def quiz_payload(conn: sqlite3.Connection, quiz_date: str) -> dict[str, Any]:
+    lesson = conn.execute(
+        "SELECT id FROM daily_lessons WHERE lesson_date = ?", (quiz_date,)
+    ).fetchone()
+    if not lesson:
+        return {"date": quiz_date, "lesson_id": None, "items": []}
+    items = conn.execute(
+        """
+        SELECT v.id AS vocabulary_item_id, v.word, v.reading, v.language,
+               v.level, v.part_of_speech, v.meaning_zh, v.meaning_en,
+               v.example_sentence, v.example_translation_zh,
+               v.collocation, v.note, v.mnemonic
+        FROM daily_lesson_items dli
+        JOIN vocabulary_items v ON v.id = dli.vocabulary_item_id
+        WHERE dli.lesson_id = ?
+        ORDER BY dli.sort_order
+        """,
+        (lesson["id"],),
+    ).fetchall()
+    return {
+        "date": quiz_date,
+        "lesson_id": lesson["id"],
+        "items": [row_to_dict(row) for row in items],
+    }
 
 
 def create_vocabulary(payload: dict[str, Any]) -> dict[str, Any]:

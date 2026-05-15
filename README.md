@@ -35,6 +35,7 @@ languages.
 - `GET /api/lessons`
 - `GET /api/lessons/:id/markdown`
 - `GET /api/reviews`
+- `GET /api/quiz`
 - `POST /api/vocabulary/candidates`
 - `POST /api/lessons/generate`
 - `POST /api/lessons/:id/mark-sent`

@@ -84,7 +84,6 @@ async function loadBootstrap() {
   $("#lesson-date").value = state.bootstrap.today;
   $("#filter-language").innerHTML = languageOptions(true);
   $('[name="language"]').innerHTML = languageOptions(false);
-  $('[name="review_date"]').value = state.bootstrap.today;
 }
 
 async function loadDashboard() {
@@ -102,7 +101,6 @@ async function loadVocabulary() {
   if (source) query.set("source", source);
   state.vocabulary = await api(`/api/vocabulary?${query}`);
   renderVocabulary();
-  renderReviewVocabularyOptions();
 }
 
 async function loadLessons() {
@@ -167,13 +165,6 @@ function renderLessons() {
         )
         .join("")
     : `<section class="panel lesson-empty">No lessons have been generated yet.</section>`;
-}
-
-function renderReviewVocabularyOptions() {
-  const select = $('[name="vocabulary_item_id"]');
-  select.innerHTML = state.vocabulary
-    .map((item) => `<option value="${item.id}">${formatLanguage(item.language)} · ${escapeHtml(item.word)} · ${escapeHtml(item.level)}</option>`)
-    .join("");
 }
 
 function renderReviews() {
@@ -292,23 +283,6 @@ function bindEvents() {
     });
     await refreshAll();
     notice("Vocabulary status updated.");
-  });
-
-  $("#review-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const el = event.currentTarget;
-    const form = new FormData(el);
-    const payload = Object.fromEntries(form.entries());
-    payload.recall_success = form.has("recall_success");
-    try {
-      await api("/api/reviews", { method: "POST", body: JSON.stringify(payload) });
-      el.reset();
-      $('[name="review_date"]').value = state.bootstrap.today;
-      await refreshAll();
-      notice("Review saved.");
-    } catch (error) {
-      notice(error.message, "error");
-    }
   });
 
   $("#language-form").addEventListener("submit", async (event) => {

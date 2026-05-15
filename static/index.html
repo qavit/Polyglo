@@ -120,18 +120,8 @@
       <section id="reviews" class="view">
         <div class="vocab-layout">
           <section class="panel">
-            <h2>Log Review</h2>
-            <form id="review-form" class="form-grid">
-              <label class="wide">Vocabulary<select name="vocabulary_item_id" required></select></label>
-              <label>Rating<input type="number" name="rating" min="0" max="5" value="3" required /></label>
-              <label>Review date<input type="date" name="review_date" /></label>
-              <label class="check"><input type="checkbox" name="recall_success" /> Recall success</label>
-              <label class="wide">Note<textarea name="note"></textarea></label>
-              <button class="primary wide" type="submit">Save review</button>
-            </form>
-          </section>
-          <section class="panel">
             <h2>Review Logs</h2>
+            <p class="panel-note">Reviews are submitted via OpenClaw. See <code>docs/openclaw.md</code> for the daily quiz workflow.</p>
             <div id="review-list" class="compact-list"></div>
           </section>
         </div>
