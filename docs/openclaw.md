@@ -58,6 +58,86 @@ Run this at the time you want to study, for example at 8:00 AM.
 This job uses only `active` vocabulary, so unreviewed AI drafts are never sent
 by accident.
 
+### Job 3: Daily Quiz
+
+Run this in the evening, for example at 8:00 PM, to close the review loop.
+
+1. Call `GET /api/quiz` (or `GET /api/quiz?date=YYYY-MM-DD` for a past date).
+2. Read the `items` array. Each item contains the word and its full metadata.
+3. For each word, send a recall prompt to your destination. For example:
+
+```
+Daily Review — 2026-05-16
+
+1. English · C1
+   What does "ameliorate" mean?
+   Reply: ameliorate 3 (or 0–5 rating)
+
+2. Japanese · N4
+   What does「相談」mean?
+   Reply: 相談 5
+```
+
+4. When the user replies, parse the word and rating from their message.
+5. For each rated word, call `POST /api/reviews`:
+
+```json
+{
+  "vocabulary_item_id": "<id from quiz item>",
+  "rating": 4,
+  "recall_success": true,
+  "review_date": "2026-05-16"
+}
+```
+
+Polyglo will compute the next review date automatically using spaced repetition.
+Words that are due for review will be surfaced again in the next day's lesson.
+
+#### Quiz API
+
+```bash
+curl http://127.0.0.1:8000/api/quiz
+```
+
+Example response:
+
+```json
+{
+  "date": "2026-05-16",
+  "lesson_id": "abc123",
+  "items": [
+    {
+      "vocabulary_item_id": "uuid",
+      "word": "ameliorate",
+      "reading": "",
+      "language": "en",
+      "level": "C1",
+      "part_of_speech": "verb",
+      "meaning_zh": "改善、改良",
+      "meaning_en": "to make a bad situation better",
+      "example_sentence": "...",
+      "example_translation_zh": "...",
+      "collocation": "ameliorate a problem",
+      "note": "...",
+      "mnemonic": "..."
+    }
+  ]
+}
+```
+
+Submit a review:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/reviews \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "vocabulary_item_id": "uuid",
+    "rating": 4,
+    "recall_success": true,
+    "review_date": "2026-05-16"
+  }'
+```
+
 ## Before Scheduling
 
 Start Polyglo somewhere OpenClaw can reach it:

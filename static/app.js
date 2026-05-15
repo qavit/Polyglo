@@ -17,6 +17,22 @@ const titles = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
+const svg = (path, opts = "") =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${opts}>${path}</svg>`;
+
+const icon = {
+  archive: svg(`<rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9"/><path d="M10 13h4"/>`),
+  check:   svg(`<polyline points="20 6 9 17 4 12"/>`, `stroke-width="2.5"`),
+  edit:    svg(`<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/>`),
+  trash:   svg(`<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>`),
+  plus:    svg(`<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>`, `stroke-width="2.5"`),
+  x:       svg(`<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>`, `stroke-width="2.5"`),
+  refresh: svg(`<path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>`),
+  send:    svg(`<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>`),
+  zap:     svg(`<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>`, `stroke-width="2.5"`),
+  star:    svg(`<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>`),
+};
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json" },
@@ -61,9 +77,34 @@ function formatLanguage(code) {
 }
 
 function wordCard(item, controls = true) {
-  const actionLabel = item.status === "active" ? "Archive" : item.source === "ai" && item.status === "draft" ? "Approve" : "Activate";
+  const isActive = item.status === "active";
+  const isAiDraft = item.source === "ai" && item.status === "draft";
+  const statusIcon = isActive ? icon.archive : icon.check;
+  const statusTooltip = isActive ? "Archive" : isAiDraft ? "Approve" : "Activate";
+  const statusTarget = isActive ? "archived" : "active";
+
+  const editForm = controls ? `
+    <div class="edit-panel hidden" data-id="${item.id}">
+      <div class="form-grid" style="margin-top:12px">
+        <label>Word<input name="word" value="${escapeHtml(item.word)}" /></label>
+        <label>Reading<input name="reading" value="${escapeHtml(item.reading || "")}" /></label>
+        <label>Level<input name="level" value="${escapeHtml(item.level)}" /></label>
+        <label>Part of speech<input name="part_of_speech" value="${escapeHtml(item.part_of_speech)}" /></label>
+        <label class="wide">Chinese meaning<input name="meaning_zh" value="${escapeHtml(item.meaning_zh)}" /></label>
+        <label class="wide">English definition<input name="meaning_en" value="${escapeHtml(item.meaning_en)}" /></label>
+        <label class="wide">Example<textarea name="example_sentence">${escapeHtml(item.example_sentence)}</textarea></label>
+        <label class="wide">Chinese example<textarea name="example_translation_zh">${escapeHtml(item.example_translation_zh)}</textarea></label>
+        <label class="wide">Collocation<textarea name="collocation">${escapeHtml(item.collocation || "")}</textarea></label>
+        <label class="wide">Note<textarea name="note">${escapeHtml(item.note || "")}</textarea></label>
+        <label class="wide">Mnemonic<textarea name="mnemonic">${escapeHtml(item.mnemonic || "")}</textarea></label>
+        <button class="primary btn-icon save-vocab-edit" data-id="${item.id}">${icon.check} Save</button>
+        <button class="ghost btn-icon cancel-edit">${icon.x} Cancel</button>
+      </div>
+    </div>
+  ` : "";
+
   return `
-    <article class="word-card">
+    <article class="word-card" data-id="${item.id}">
       <header>
         <div>
           <div class="word-title">${escapeHtml(item.word)}${item.reading ? ` · ${escapeHtml(item.reading)}` : ""}</div>
@@ -72,9 +113,16 @@ function wordCard(item, controls = true) {
         <span class="badge ${item.status === "draft" ? "warm" : ""}">${escapeHtml(item.status)}</span>
       </header>
       <p class="word-meta">${escapeHtml(item.meaning_zh)} · ${escapeHtml(item.meaning_en)}</p>
-      <p>${escapeHtml(item.example_sentence)}</p>
+      <p class="word-example">${escapeHtml(item.example_sentence)}</p>
       <p class="word-meta">${escapeHtml(item.example_translation_zh)}</p>
-      ${controls ? `<button class="ghost status-toggle" data-id="${item.id}" data-status="${item.status === "active" ? "archived" : "active"}">${actionLabel}</button>` : ""}
+      ${controls ? `
+        <div class="card-actions">
+          <button class="icon-btn status-toggle" data-id="${item.id}" data-status="${statusTarget}" data-tooltip="${statusTooltip}">${statusIcon}</button>
+          <button class="icon-btn edit-toggle" data-id="${item.id}" data-tooltip="Edit">${icon.edit}</button>
+          <button class="icon-btn danger delete-vocab" data-id="${item.id}" data-tooltip="Delete">${icon.trash}</button>
+        </div>
+      ` : ""}
+      ${editForm}
     </article>
   `;
 }
@@ -84,7 +132,6 @@ async function loadBootstrap() {
   $("#lesson-date").value = state.bootstrap.today;
   $("#filter-language").innerHTML = languageOptions(true);
   $('[name="language"]').innerHTML = languageOptions(false);
-  $('[name="review_date"]').value = state.bootstrap.today;
 }
 
 async function loadDashboard() {
@@ -96,13 +143,14 @@ async function loadVocabulary() {
   const language = $("#filter-language").value;
   const status = $("#filter-status").value;
   const source = $("#filter-source").value;
+  const q = $("#filter-search").value.trim();
   const query = new URLSearchParams();
   if (language) query.set("language", language);
   if (status) query.set("status", status);
   if (source) query.set("source", source);
+  if (q) query.set("q", q);
   state.vocabulary = await api(`/api/vocabulary?${query}`);
   renderVocabulary();
-  renderReviewVocabularyOptions();
 }
 
 async function loadLessons() {
@@ -169,13 +217,6 @@ function renderLessons() {
     : `<section class="panel lesson-empty">No lessons have been generated yet.</section>`;
 }
 
-function renderReviewVocabularyOptions() {
-  const select = $('[name="vocabulary_item_id"]');
-  select.innerHTML = state.vocabulary
-    .map((item) => `<option value="${item.id}">${formatLanguage(item.language)} · ${escapeHtml(item.word)} · ${escapeHtml(item.level)}</option>`)
-    .join("");
-}
-
 function renderReviews() {
   $("#review-list").innerHTML = state.reviews.length
     ? state.reviews.map((review) => `<div class="log-row"><span>${review.review_date} · ${formatLanguage(review.language)} · ${escapeHtml(review.word)}</span><strong>${review.rating}/5</strong></div>`).join("")
@@ -213,6 +254,9 @@ function languageRow(language) {
         <label>Sort<input data-field="sort_order" type="number" value="${language.sort_order}" /></label>
         <label class="check"><input data-field="enabled" type="checkbox" ${language.enabled ? "checked" : ""} /> Enabled</label>
         <button class="ghost language-save" data-code="${escapeHtml(language.code)}">Save</button>
+      </div>
+      <div class="card-actions" style="margin-top:10px">
+        <button class="ghost btn-icon danger language-delete" data-code="${escapeHtml(language.code)}" data-name="${escapeHtml(language.name)}">${icon.trash} Delete language</button>
       </div>
     </article>
   `;
@@ -257,6 +301,7 @@ function bindEvents() {
     notice("Lesson marked as sent.");
   });
 
+  $("#filter-search").addEventListener("input", loadVocabulary);
   $("#filter-language").addEventListener("change", loadVocabulary);
   $("#filter-status").addEventListener("change", loadVocabulary);
   $("#filter-source").addEventListener("change", loadVocabulary);
@@ -267,13 +312,22 @@ function bindEvents() {
   });
   $("#reload-vocab").addEventListener("click", loadVocabulary);
 
+  $("#show-add-word").addEventListener("click", () => {
+    const panel = $("#add-word-panel");
+    panel.classList.toggle("hidden");
+    const isOpen = !panel.classList.contains("hidden");
+    const btn = $("#show-add-word");
+    btn.innerHTML = isOpen ? `${icon.x} Close` : `${icon.plus} Add Word`;
+  });
+
   $("#vocab-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const el = event.currentTarget;
+    const form = new FormData(el);
     const payload = Object.fromEntries(form.entries());
     try {
       await api("/api/vocabulary", { method: "POST", body: JSON.stringify(payload) });
-      event.currentTarget.reset();
+      el.reset();
       $('[name="language"]').innerHTML = languageOptions(false);
       await refreshAll();
       notice("Vocabulary item added.");
@@ -283,41 +337,78 @@ function bindEvents() {
   });
 
   $("#vocab-list").addEventListener("click", async (event) => {
-    const button = event.target.closest(".status-toggle");
-    if (!button) return;
-    await api(`/api/vocabulary/${button.dataset.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status: button.dataset.status }),
-    });
-    await refreshAll();
-    notice("Vocabulary status updated.");
-  });
+    const statusBtn = event.target.closest(".status-toggle");
+    if (statusBtn) {
+      try {
+        await api(`/api/vocabulary/${statusBtn.dataset.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: statusBtn.dataset.status }),
+        });
+        await refreshAll();
+        notice("Vocabulary status updated.");
+      } catch (error) {
+        notice(error.message, "error");
+      }
+      return;
+    }
 
-  $("#review-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const payload = Object.fromEntries(form.entries());
-    payload.recall_success = form.has("recall_success");
-    try {
-      await api("/api/reviews", { method: "POST", body: JSON.stringify(payload) });
-      event.currentTarget.reset();
-      $('[name="review_date"]').value = state.bootstrap.today;
-      await refreshAll();
-      notice("Review saved.");
-    } catch (error) {
-      notice(error.message, "error");
+    const editBtn = event.target.closest(".edit-toggle");
+    if (editBtn) {
+      const panel = document.querySelector(`.edit-panel[data-id="${editBtn.dataset.id}"]`);
+      if (panel) panel.classList.toggle("hidden");
+      return;
+    }
+
+    const cancelBtn = event.target.closest(".cancel-edit");
+    if (cancelBtn) {
+      cancelBtn.closest(".edit-panel").classList.add("hidden");
+      return;
+    }
+
+    const saveBtn = event.target.closest(".save-vocab-edit");
+    if (saveBtn) {
+      const panel = saveBtn.closest(".edit-panel");
+      const payload = {};
+      panel.querySelectorAll("[name]").forEach((input) => {
+        payload[input.name] = input.value;
+      });
+      try {
+        await api(`/api/vocabulary/${saveBtn.dataset.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        await refreshAll();
+        notice("Vocabulary updated.");
+      } catch (error) {
+        notice(error.message, "error");
+      }
+      return;
+    }
+
+    const deleteBtn = event.target.closest(".delete-vocab");
+    if (deleteBtn) {
+      if (!confirm("Delete this vocabulary item? This cannot be undone.")) return;
+      try {
+        await api(`/api/vocabulary/${deleteBtn.dataset.id}`, { method: "DELETE" });
+        await refreshAll();
+        notice("Vocabulary item deleted.");
+      } catch (error) {
+        notice(error.message, "error");
+      }
+      return;
     }
   });
 
   $("#language-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const el = event.currentTarget;
+    const form = new FormData(el);
     const payload = Object.fromEntries(form.entries());
     payload.enabled = form.has("enabled");
     try {
       await api("/api/languages", { method: "POST", body: JSON.stringify(payload) });
-      event.currentTarget.reset();
-      event.currentTarget.elements.enabled.checked = true;
+      el.reset();
+      el.elements.enabled.checked = true;
       await loadBootstrap();
       await refreshAll();
       notice("Language added.");
@@ -327,23 +418,40 @@ function bindEvents() {
   });
 
   $("#language-list").addEventListener("click", async (event) => {
-    const button = event.target.closest(".language-save");
-    if (!button) return;
-    const row = event.target.closest(".language-row");
-    const payload = {};
-    row.querySelectorAll("[data-field]").forEach((input) => {
-      payload[input.dataset.field] = input.type === "checkbox" ? input.checked : input.value;
-    });
-    try {
-      await api(`/api/languages/${button.dataset.code}`, {
-        method: "PATCH",
-        body: JSON.stringify(payload),
+    const saveBtn = event.target.closest(".language-save");
+    if (saveBtn) {
+      const row = event.target.closest(".language-row");
+      const payload = {};
+      row.querySelectorAll("[data-field]").forEach((input) => {
+        payload[input.dataset.field] = input.type === "checkbox" ? input.checked : input.value;
       });
-      await loadBootstrap();
-      await refreshAll();
-      notice("Language updated.");
-    } catch (error) {
-      notice(error.message, "error");
+      try {
+        await api(`/api/languages/${saveBtn.dataset.code}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        await loadBootstrap();
+        await refreshAll();
+        notice("Language updated.");
+      } catch (error) {
+        notice(error.message, "error");
+      }
+      return;
+    }
+
+    const deleteBtn = event.target.closest(".language-delete");
+    if (deleteBtn) {
+      const { code, name } = deleteBtn.dataset;
+      if (!confirm(`Delete "${name}"? This will also delete all vocabulary for this language. This cannot be undone.`)) return;
+      try {
+        await api(`/api/languages/${code}`, { method: "DELETE" });
+        await loadBootstrap();
+        await refreshAll();
+        notice(`Language "${name}" deleted.`);
+      } catch (error) {
+        notice(error.message, "error");
+      }
+      return;
     }
   });
 }

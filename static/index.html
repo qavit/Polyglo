@@ -40,7 +40,7 @@
           <section class="panel">
             <div class="panel-head">
               <h2>Today's Lesson</h2>
-              <button id="mark-sent" class="ghost">Mark Sent</button>
+              <button id="mark-sent" class="ghost btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Mark Sent</button>
             </div>
             <div id="today-lesson" class="lesson-empty"></div>
           </section>
@@ -57,9 +57,34 @@
             <h2>Review Queue</h2>
             <p>Approve AI-generated drafts before they can appear in lessons.</p>
           </div>
-          <button id="show-ai-drafts" class="primary">Review AI Drafts</button>
+          <div class="actions">
+            <button id="show-ai-drafts" class="ghost btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> AI Drafts</button>
+            <button id="show-add-word" class="primary btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Word</button>
+          </div>
         </div>
-        <div class="toolbar">
+
+        <section class="panel hidden" id="add-word-panel">
+          <h2>Add Word</h2>
+          <form id="vocab-form" class="form-grid">
+            <label>Language<select name="language" required></select></label>
+            <label>Word<input name="word" required /></label>
+            <label>Reading<input name="reading" /></label>
+            <label>Part of speech<input name="part_of_speech" required /></label>
+            <label>Level<input name="level" required placeholder="C1 / A2 / N4" /></label>
+            <label>Status<select name="status"><option>draft</option><option>reviewed</option><option selected>active</option><option>archived</option></select></label>
+            <label class="wide">Chinese meaning<input name="meaning_zh" required /></label>
+            <label class="wide">English definition<input name="meaning_en" required /></label>
+            <label class="wide">Example<textarea name="example_sentence" required></textarea></label>
+            <label class="wide">Chinese example translation<textarea name="example_translation_zh" required></textarea></label>
+            <label class="wide">Collocation<textarea name="collocation"></textarea></label>
+            <label class="wide">Usage note<textarea name="note"></textarea></label>
+            <label class="wide">Mnemonic<textarea name="mnemonic"></textarea></label>
+            <button class="primary wide btn-icon" type="submit"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add word</button>
+          </form>
+        </section>
+
+        <div class="toolbar" style="margin-top:14px">
+          <input id="filter-search" type="search" placeholder="Search words…" style="max-width:200px" />
           <select id="filter-language"></select>
           <select id="filter-status">
             <option value="">All statuses</option>
@@ -74,33 +99,13 @@
             <option value="manual">Manual</option>
             <option value="import">Import</option>
           </select>
-          <button id="reload-vocab" class="ghost">Refresh</button>
+          <button id="reload-vocab" class="ghost btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Refresh</button>
         </div>
-        <div class="vocab-layout">
-          <section class="panel">
-            <h2>Add Word</h2>
-            <form id="vocab-form" class="form-grid">
-              <label>Language<select name="language" required></select></label>
-              <label>Word<input name="word" required /></label>
-              <label>Reading<input name="reading" /></label>
-              <label>Part of speech<input name="part_of_speech" required /></label>
-              <label>Level<input name="level" required placeholder="C1 / A2 / N4" /></label>
-              <label>Status<select name="status"><option>draft</option><option>reviewed</option><option selected>active</option><option>archived</option></select></label>
-              <label class="wide">Chinese meaning<input name="meaning_zh" required /></label>
-              <label class="wide">English definition<input name="meaning_en" required /></label>
-              <label class="wide">Example<textarea name="example_sentence" required></textarea></label>
-              <label class="wide">Chinese example translation<textarea name="example_translation_zh" required></textarea></label>
-              <label class="wide">Collocation<textarea name="collocation"></textarea></label>
-              <label class="wide">Usage note<textarea name="note"></textarea></label>
-              <label class="wide">Mnemonic<textarea name="mnemonic"></textarea></label>
-              <button class="primary wide" type="submit">Add word</button>
-            </form>
-          </section>
-          <section class="panel">
-            <h2>Vocabulary Bank</h2>
-            <div id="vocab-list" class="vocab-list"></div>
-          </section>
-        </div>
+
+        <section class="panel" style="margin-top:14px">
+          <h2>Vocabulary Bank</h2>
+          <div id="vocab-list" class="vocab-list" style="margin-top:12px"></div>
+        </section>
       </section>
 
       <section id="lessons" class="view">
@@ -111,7 +116,7 @@
           </div>
           <div class="actions">
             <input id="lesson-date" type="date" />
-            <button id="generate-today" class="primary">Generate Lesson</button>
+            <button id="generate-today" class="primary btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate</button>
           </div>
         </section>
         <div id="lesson-list" class="lesson-list"></div>
@@ -120,18 +125,8 @@
       <section id="reviews" class="view">
         <div class="vocab-layout">
           <section class="panel">
-            <h2>Log Review</h2>
-            <form id="review-form" class="form-grid">
-              <label class="wide">Vocabulary<select name="vocabulary_item_id" required></select></label>
-              <label>Rating<input type="number" name="rating" min="0" max="5" value="3" required /></label>
-              <label>Review date<input type="date" name="review_date" /></label>
-              <label class="check"><input type="checkbox" name="recall_success" /> Recall success</label>
-              <label class="wide">Note<textarea name="note"></textarea></label>
-              <button class="primary wide" type="submit">Save review</button>
-            </form>
-          </section>
-          <section class="panel">
             <h2>Review Logs</h2>
+            <p class="panel-note">Reviews are submitted via OpenClaw. See <code>docs/openclaw.md</code> for the daily quiz workflow.</p>
             <div id="review-list" class="compact-list"></div>
           </section>
         </div>
@@ -147,7 +142,7 @@
               <label>Minimum level<input name="minimum_level" placeholder="Optional: A2, N4, beginner" /></label>
               <label>Sort order<input name="sort_order" type="number" placeholder="Optional" /></label>
               <label class="check"><input type="checkbox" name="enabled" checked /> Include in daily lessons</label>
-              <button class="primary wide" type="submit">Add language</button>
+              <button class="primary wide btn-icon" type="submit"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add language</button>
             </form>
           </section>
           <section class="panel">
