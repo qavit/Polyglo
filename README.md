@@ -33,6 +33,7 @@ languages.
 - `GET /api/languages`
 - `GET /api/generation-plan`
 - `GET /api/lessons`
+- `GET /api/lessons/:id/markdown`
 - `GET /api/reviews`
 - `POST /api/vocabulary/candidates`
 - `POST /api/lessons/generate`
@@ -40,6 +41,7 @@ languages.
 - `POST /api/languages`
 - `PATCH /api/languages/:code`
 - `POST /api/vocabulary`
+- `PATCH /api/lessons/:id/items/:language`
 - `PATCH /api/vocabulary/:id`
 - `POST /api/reviews`
 

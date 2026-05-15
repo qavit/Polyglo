@@ -512,6 +512,19 @@ class Handler(SimpleHTTPRequestHandler):
                 if parsed.path == "/api/reviews":
                     self.send_json(list_reviews(conn))
                     return
+                parts = parsed.path.split("/")
+                if len(parts) == 5 and parts[2] == "lessons" and parts[4] == "markdown":
+                    lesson = lesson_payload(conn, parts[3])
+                    if not lesson:
+                        self.send_json({"error": "Lesson not found"}, 404)
+                        return
+                    body = lesson["generated_message"].encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/markdown; charset=utf-8")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
             self.send_json({"error": "Not found"}, 404)
         except Exception as exc:
             self.send_json({"error": str(exc)}, 500)
@@ -546,6 +559,16 @@ class Handler(SimpleHTTPRequestHandler):
     def do_PATCH(self) -> None:
         parsed = urlparse(self.path)
         try:
+            # PATCH /api/lessons/:id/items/:language
+            parts = parsed.path.split("/")
+            if (
+                len(parts) == 6
+                and parts[1] == "api"
+                and parts[2] == "lessons"
+                and parts[4] == "items"
+            ):
+                self.send_json(swap_lesson_item(parts[3], parts[5], self.read_json()))
+                return
             if parsed.path.startswith("/api/vocabulary/"):
                 item_id = parsed.path.split("/")[3]
                 self.send_json(update_vocabulary(item_id, self.read_json()))
@@ -816,7 +839,7 @@ def create_vocabulary_candidates(payload: dict[str, Any]) -> dict[str, Any]:
                 """
                 SELECT id, status, source
                 FROM vocabulary_items
-                WHERE language = ? AND lower(word) = lower(?)
+                WHERE language = ? AND word = ?
                 """,
                 (candidate.get("language"), candidate.get("word", "")),
             ).fetchone()
@@ -946,6 +969,57 @@ def mark_lesson_sent(lesson_id: str) -> dict[str, Any]:
         if not payload:
             raise ValueError("Lesson not found")
         return payload
+
+
+def swap_lesson_item(lesson_id: str, language: str, payload: dict[str, Any]) -> dict[str, Any]:
+    vocab_id = (payload.get("vocabulary_item_id") or "").strip()
+    if not vocab_id:
+        raise ValueError("vocabulary_item_id is required")
+    with connect() as conn:
+        lesson = conn.execute(
+            "SELECT id, lesson_date FROM daily_lessons WHERE id = ?", (lesson_id,)
+        ).fetchone()
+        if not lesson:
+            raise ValueError("Lesson not found")
+        item = conn.execute(
+            "SELECT * FROM vocabulary_items WHERE id = ? AND language = ? AND status = 'active'",
+            (vocab_id, language),
+        ).fetchone()
+        if not item:
+            raise ValueError(f"Vocabulary item not found or not active for language '{language}'")
+        existing = conn.execute(
+            "SELECT id FROM daily_lesson_items WHERE lesson_id = ? AND language = ?",
+            (lesson_id, language),
+        ).fetchone()
+        if not existing:
+            raise ValueError(f"No existing lesson item for language '{language}'")
+        conn.execute(
+            """
+            UPDATE daily_lesson_items
+            SET vocabulary_item_id = ?, created_at = ?
+            WHERE lesson_id = ? AND language = ?
+            """,
+            (vocab_id, now_iso(), lesson_id, language),
+        )
+        items = conn.execute(
+            """
+            SELECT v.*, dli.sort_order
+            FROM daily_lesson_items dli
+            JOIN vocabulary_items v ON v.id = dli.vocabulary_item_id
+            WHERE dli.lesson_id = ?
+            ORDER BY dli.sort_order
+            """,
+            (lesson_id,),
+        ).fetchall()
+        languages = language_map(conn)
+        message = render_lesson_markdown(lesson["lesson_date"], items, languages)
+        conn.execute(
+            "UPDATE daily_lessons SET generated_message = ?, updated_at = ? WHERE id = ?",
+            (message, now_iso(), lesson_id),
+        )
+        result = lesson_payload(conn, lesson_id)
+        assert result
+        return result
 
 
 def main() -> None:
