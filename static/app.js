@@ -7,11 +7,11 @@ const state = {
 };
 
 const titles = {
-  dashboard: ["Dashboard", "今日排程、詞庫狀態與最近學習紀錄"],
-  vocabulary: ["Vocabulary Bank", "管理任意語言的詞庫、程度、狀態與例句"],
-  lessons: ["Daily Lessons", "產生、預覽與標記每日 Markdown"],
-  reviews: ["Review", "回填熟悉度、召回狀態與下次複習日期"],
-  settings: ["Settings", "管理排程與可用語言"],
+  dashboard: ["Dashboard", "Operational overview for lessons, vocabulary, and AI drafts."],
+  vocabulary: ["Vocabulary", "Review AI candidates and manage the vocabulary bank."],
+  lessons: ["Lessons", "Generate, preview, and deliver daily Markdown lessons."],
+  reviews: ["Reviews", "Log recall results and track learning history."],
+  settings: ["Settings", "Manage languages and scheduler configuration."],
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -130,11 +130,11 @@ function renderDashboard() {
   $("#mark-sent").disabled = !lesson || lesson.status === "sent";
   $("#today-lesson").innerHTML = lesson
     ? `<div class="lesson-cards">${lesson.items.map((item) => wordCard(item, false)).join("")}</div><pre class="markdown">${escapeHtml(lesson.generated_message)}</pre>`
-    : "今天還沒有 lesson。按右上角 Generate 產生。";
+    : "No lesson has been generated for today. Open Lessons to generate one.";
 
   $("#recent-words").innerHTML = state.dashboard.recentWords.length
     ? state.dashboard.recentWords.map((row) => `<div class="log-row"><span>${row.lesson_date} · ${formatLanguage(row.language)}</span><strong>${escapeHtml(row.word)}</strong></div>`).join("")
-    : "尚無最近學習紀錄。";
+    : "No recently learned words yet.";
 }
 
 function metric(label, value) {
@@ -144,7 +144,7 @@ function metric(label, value) {
 function renderVocabulary() {
   $("#vocab-list").innerHTML = state.vocabulary.length
     ? state.vocabulary.map((item) => wordCard(item)).join("")
-    : `<div class="lesson-empty">沒有符合條件的單字。</div>`;
+    : `<div class="lesson-empty">No vocabulary items match the current filters.</div>`;
 }
 
 function renderLessons() {
@@ -166,7 +166,7 @@ function renderLessons() {
         `
         )
         .join("")
-    : `<section class="panel lesson-empty">尚未產生任何 lesson。</section>`;
+    : `<section class="panel lesson-empty">No lessons have been generated yet.</section>`;
 }
 
 function renderReviewVocabularyOptions() {
@@ -179,7 +179,7 @@ function renderReviewVocabularyOptions() {
 function renderReviews() {
   $("#review-list").innerHTML = state.reviews.length
     ? state.reviews.map((review) => `<div class="log-row"><span>${review.review_date} · ${formatLanguage(review.language)} · ${escapeHtml(review.word)}</span><strong>${review.rating}/5</strong></div>`).join("")
-    : "尚無 review log。";
+    : "No review logs yet.";
 }
 
 function renderSettings() {

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -18,8 +18,8 @@
       <nav class="tabs" aria-label="Primary">
         <button class="tab active" data-view="dashboard">Dashboard</button>
         <button class="tab" data-view="vocabulary">Vocabulary</button>
-        <button class="tab" data-view="lessons">Daily Lessons</button>
-        <button class="tab" data-view="reviews">Review</button>
+        <button class="tab" data-view="lessons">Lessons</button>
+        <button class="tab" data-view="reviews">Reviews</button>
         <button class="tab" data-view="settings">Settings</button>
       </nav>
     </aside>
@@ -28,11 +28,7 @@
       <header class="topbar">
         <div>
           <h1 id="view-title">Dashboard</h1>
-          <p id="view-subtitle">今日排程、詞庫狀態與最近學習紀錄</p>
-        </div>
-        <div class="actions">
-          <input id="lesson-date" type="date" />
-          <button id="generate-today" class="primary">Generate</button>
+          <p id="view-subtitle">Operational overview for lessons, vocabulary, and AI drafts.</p>
         </div>
       </header>
 
@@ -56,6 +52,13 @@
       </section>
 
       <section id="vocabulary" class="view">
+        <div class="section-head">
+          <div>
+            <h2>Review Queue</h2>
+            <p>Approve AI-generated drafts before they can appear in lessons.</p>
+          </div>
+          <button id="show-ai-drafts" class="primary">Review AI Drafts</button>
+        </div>
         <div class="toolbar">
           <select id="filter-language"></select>
           <select id="filter-status">
@@ -71,12 +74,11 @@
             <option value="manual">Manual</option>
             <option value="import">Import</option>
           </select>
-          <button id="show-ai-drafts" class="ghost">AI Drafts</button>
           <button id="reload-vocab" class="ghost">Refresh</button>
         </div>
         <div class="vocab-layout">
           <section class="panel">
-            <h2>Add Vocabulary</h2>
+            <h2>Add Word</h2>
             <form id="vocab-form" class="form-grid">
               <label>Language<select name="language" required></select></label>
               <label>Word<input name="word" required /></label>
@@ -84,10 +86,10 @@
               <label>Part of speech<input name="part_of_speech" required /></label>
               <label>Level<input name="level" required placeholder="C1 / A2 / N4" /></label>
               <label>Status<select name="status"><option>draft</option><option>reviewed</option><option selected>active</option><option>archived</option></select></label>
-              <label class="wide">中文解釋<input name="meaning_zh" required /></label>
+              <label class="wide">Chinese meaning<input name="meaning_zh" required /></label>
               <label class="wide">English definition<input name="meaning_en" required /></label>
               <label class="wide">Example<textarea name="example_sentence" required></textarea></label>
-              <label class="wide">例句中文翻譯<textarea name="example_translation_zh" required></textarea></label>
+              <label class="wide">Chinese example translation<textarea name="example_translation_zh" required></textarea></label>
               <label class="wide">Collocation<textarea name="collocation"></textarea></label>
               <label class="wide">Usage note<textarea name="note"></textarea></label>
               <label class="wide">Mnemonic<textarea name="mnemonic"></textarea></label>
@@ -102,6 +104,16 @@
       </section>
 
       <section id="lessons" class="view">
+        <section class="panel lesson-controls">
+          <div>
+            <h2>Generate Lesson</h2>
+            <p>Create or regenerate a lesson from active vocabulary for the selected date.</p>
+          </div>
+          <div class="actions">
+            <input id="lesson-date" type="date" />
+            <button id="generate-today" class="primary">Generate Lesson</button>
+          </div>
+        </section>
         <div id="lesson-list" class="lesson-list"></div>
       </section>
 
@@ -144,7 +156,7 @@
           </section>
         </div>
         <section class="panel settings-panel settings-offset">
-          <h2>Current MVP Settings</h2>
+          <h2>System Settings</h2>
           <div id="settings-list" class="settings-list"></div>
         </section>
       </section>

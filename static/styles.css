@@ -136,6 +136,30 @@ h2 {
   flex-wrap: wrap;
 }
 
+.section-head,
+.lesson-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.section-head p,
+.lesson-controls p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.lesson-controls {
+  margin-bottom: 16px;
+}
+
+.lesson-controls .actions {
+  min-width: min(100%, 360px);
+}
+
 input,
 select,
 textarea {
@@ -410,6 +434,8 @@ label {
   }
 
   .topbar,
+  .section-head,
+  .lesson-controls,
   .split,
   .vocab-layout {
     grid-template-columns: 1fr;
@@ -417,6 +443,12 @@ label {
 
   .topbar {
     display: grid;
+  }
+
+  .section-head,
+  .lesson-controls {
+    display: grid;
+    align-items: stretch;
   }
 
   .metrics {
