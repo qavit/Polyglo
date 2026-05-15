@@ -38,6 +38,10 @@ LEVEL_RANKS = {
     "N1": 5,
 }
 
+# Spaced-repetition interval ladder in days.
+# Stage advances on each successful recall; resets to 0 on failure.
+REVIEW_INTERVALS = [1, 3, 7, 21, 60, 180]
+
 
 def now_iso() -> str:
     return datetime.now().replace(microsecond=0).isoformat()
@@ -354,6 +358,32 @@ def generate_lesson(lesson_date: str, force: bool = False) -> dict[str, Any]:
         for language in enabled_languages:
             code = language["code"]
             minimum = language["minimum_level"]
+
+            # Priority 1: words whose next_review_date is due today (bypass duplicate window).
+            due_rows = conn.execute(
+                """
+                SELECT v.*, rr.next_review_date,
+                       (SELECT COUNT(*) FROM review_logs WHERE vocabulary_item_id = v.id) AS review_count
+                FROM vocabulary_items v
+                JOIN (
+                    SELECT r1.vocabulary_item_id, r1.next_review_date
+                    FROM review_logs r1
+                    WHERE r1.created_at = (
+                        SELECT MAX(r2.created_at) FROM review_logs r2
+                        WHERE r2.vocabulary_item_id = r1.vocabulary_item_id
+                    )
+                ) rr ON rr.vocabulary_item_id = v.id
+                WHERE v.language = ? AND v.status = 'active' AND rr.next_review_date <= ?
+                ORDER BY rr.next_review_date ASC
+                """,
+                (code, lesson_date),
+            ).fetchall()
+            allowed_due = [row for row in due_rows if level_allowed(row["level"], minimum)]
+            if allowed_due:
+                selected.append(allowed_due[0])
+                continue
+
+            # Priority 2: new words not seen within the duplicate avoidance window.
             rows = conn.execute(
                 """
                 SELECT v.*,
@@ -482,6 +512,19 @@ class Handler(SimpleHTTPRequestHandler):
                 if parsed.path == "/api/reviews":
                     self.send_json(list_reviews(conn))
                     return
+                parts = parsed.path.split("/")
+                if len(parts) == 5 and parts[2] == "lessons" and parts[4] == "markdown":
+                    lesson = lesson_payload(conn, parts[3])
+                    if not lesson:
+                        self.send_json({"error": "Lesson not found"}, 404)
+                        return
+                    body = lesson["generated_message"].encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/markdown; charset=utf-8")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
             self.send_json({"error": "Not found"}, 404)
         except Exception as exc:
             self.send_json({"error": str(exc)}, 500)
@@ -516,6 +559,16 @@ class Handler(SimpleHTTPRequestHandler):
     def do_PATCH(self) -> None:
         parsed = urlparse(self.path)
         try:
+            # PATCH /api/lessons/:id/items/:language
+            parts = parsed.path.split("/")
+            if (
+                len(parts) == 6
+                and parts[1] == "api"
+                and parts[2] == "lessons"
+                and parts[4] == "items"
+            ):
+                self.send_json(swap_lesson_item(parts[3], parts[5], self.read_json()))
+                return
             if parsed.path.startswith("/api/vocabulary/"):
                 item_id = parsed.path.split("/")[3]
                 self.send_json(update_vocabulary(item_id, self.read_json()))
@@ -582,15 +635,11 @@ def generation_plan(conn: sqlite3.Connection) -> dict[str, Any]:
     settings = get_settings(conn)
     enabled_languages = list_languages(conn, enabled_only=True)
     existing_rows = conn.execute(
-        """
-        SELECT language, word, level, status, source
-        FROM vocabulary_items
-        ORDER BY language, word
-        """
+        "SELECT language, word FROM vocabulary_items ORDER BY language, word"
     ).fetchall()
     recent_rows = conn.execute(
         """
-        SELECT dl.lesson_date, v.language, v.word
+        SELECT v.language, v.word
         FROM daily_lesson_items dli
         JOIN daily_lessons dl ON dl.id = dli.lesson_id
         JOIN vocabulary_items v ON v.id = dli.vocabulary_item_id
@@ -601,12 +650,12 @@ def generation_plan(conn: sqlite3.Connection) -> dict[str, Any]:
             (date.today() - timedelta(days=settings["duplicate_avoidance_days"])).isoformat(),
         ),
     ).fetchall()
-    existing_by_language: dict[str, list[dict[str, Any]]] = {}
+    existing_by_language: dict[str, list[str]] = {}
     for row in existing_rows:
-        existing_by_language.setdefault(row["language"], []).append(row_to_dict(row))
-    recent_by_language: dict[str, list[dict[str, Any]]] = {}
+        existing_by_language.setdefault(row["language"], []).append(row["word"])
+    recent_by_language: dict[str, list[str]] = {}
     for row in recent_rows:
-        recent_by_language.setdefault(row["language"], []).append(row_to_dict(row))
+        recent_by_language.setdefault(row["language"], []).append(row["word"])
     return {
         "date": today_iso(),
         "duplicate_avoidance_days": settings["duplicate_avoidance_days"],
@@ -774,6 +823,9 @@ def create_vocabulary_candidates(payload: dict[str, Any]) -> dict[str, Any]:
     created = []
     skipped = []
     with connect() as conn:
+        settings = get_settings(conn)
+        require_review = settings.get("require_review_for_ai_words", "true") == "true"
+        auto_status = "draft" if require_review else "active"
         for item in items:
             if not isinstance(item, dict):
                 skipped.append({"reason": "Item is not an object", "item": item})
@@ -781,13 +833,13 @@ def create_vocabulary_candidates(payload: dict[str, Any]) -> dict[str, Any]:
             candidate = {
                 **item,
                 "source": item.get("source", "ai"),
-                "status": item.get("status", "draft"),
+                "status": item.get("status", auto_status),
             }
             duplicate = conn.execute(
                 """
                 SELECT id, status, source
                 FROM vocabulary_items
-                WHERE language = ? AND lower(word) = lower(?)
+                WHERE language = ? AND word = ?
                 """,
                 (candidate.get("language"), candidate.get("word", "")),
             ).fetchone()
@@ -847,6 +899,25 @@ def update_vocabulary(item_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         return row_to_dict(row)
 
 
+def _compute_next_review(
+    conn: sqlite3.Connection,
+    item_id: str,
+    recall_success: bool,
+    review_date: str,
+) -> str:
+    if not recall_success:
+        days = REVIEW_INTERVALS[0]
+    else:
+        past_successes = conn.execute(
+            "SELECT COUNT(*) AS count FROM review_logs WHERE vocabulary_item_id = ? AND recall_success = 1",
+            (item_id,),
+        ).fetchone()["count"]
+        stage = min(past_successes, len(REVIEW_INTERVALS) - 1)
+        days = REVIEW_INTERVALS[stage]
+    base = datetime.fromisoformat(review_date).date()
+    return (base + timedelta(days=days)).isoformat()
+
+
 def create_review(payload: dict[str, Any]) -> dict[str, Any]:
     item_id = payload.get("vocabulary_item_id")
     if not item_id:
@@ -854,11 +925,13 @@ def create_review(payload: dict[str, Any]) -> dict[str, Any]:
     rating = int(payload.get("rating", 0))
     if rating < 0 or rating > 5:
         raise ValueError("rating must be between 0 and 5")
+    recall_success = bool(payload.get("recall_success"))
+    review_date = payload.get("review_date") or today_iso()
     next_review = payload.get("next_review_date")
-    if not next_review:
-        next_review = (date.today() + timedelta(days=3 if rating < 4 else 7)).isoformat()
     review_id = str(uuid.uuid4())
     with connect() as conn:
+        if not next_review:
+            next_review = _compute_next_review(conn, item_id, recall_success, review_date)
         conn.execute(
             """
             INSERT INTO review_logs (
@@ -870,9 +943,9 @@ def create_review(payload: dict[str, Any]) -> dict[str, Any]:
             (
                 review_id,
                 item_id,
-                payload.get("review_date") or today_iso(),
+                review_date,
                 rating,
-                1 if payload.get("recall_success") else 0,
+                1 if recall_success else 0,
                 payload.get("note", ""),
                 next_review,
                 now_iso(),
@@ -896,6 +969,57 @@ def mark_lesson_sent(lesson_id: str) -> dict[str, Any]:
         if not payload:
             raise ValueError("Lesson not found")
         return payload
+
+
+def swap_lesson_item(lesson_id: str, language: str, payload: dict[str, Any]) -> dict[str, Any]:
+    vocab_id = (payload.get("vocabulary_item_id") or "").strip()
+    if not vocab_id:
+        raise ValueError("vocabulary_item_id is required")
+    with connect() as conn:
+        lesson = conn.execute(
+            "SELECT id, lesson_date FROM daily_lessons WHERE id = ?", (lesson_id,)
+        ).fetchone()
+        if not lesson:
+            raise ValueError("Lesson not found")
+        item = conn.execute(
+            "SELECT * FROM vocabulary_items WHERE id = ? AND language = ? AND status = 'active'",
+            (vocab_id, language),
+        ).fetchone()
+        if not item:
+            raise ValueError(f"Vocabulary item not found or not active for language '{language}'")
+        existing = conn.execute(
+            "SELECT id FROM daily_lesson_items WHERE lesson_id = ? AND language = ?",
+            (lesson_id, language),
+        ).fetchone()
+        if not existing:
+            raise ValueError(f"No existing lesson item for language '{language}'")
+        conn.execute(
+            """
+            UPDATE daily_lesson_items
+            SET vocabulary_item_id = ?, created_at = ?
+            WHERE lesson_id = ? AND language = ?
+            """,
+            (vocab_id, now_iso(), lesson_id, language),
+        )
+        items = conn.execute(
+            """
+            SELECT v.*, dli.sort_order
+            FROM daily_lesson_items dli
+            JOIN vocabulary_items v ON v.id = dli.vocabulary_item_id
+            WHERE dli.lesson_id = ?
+            ORDER BY dli.sort_order
+            """,
+            (lesson_id,),
+        ).fetchall()
+        languages = language_map(conn)
+        message = render_lesson_markdown(lesson["lesson_date"], items, languages)
+        conn.execute(
+            "UPDATE daily_lessons SET generated_message = ?, updated_at = ? WHERE id = ?",
+            (message, now_iso(), lesson_id),
+        )
+        result = lesson_payload(conn, lesson_id)
+        assert result
+        return result
 
 
 def main() -> None:
