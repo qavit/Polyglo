@@ -1,23 +1,62 @@
 # OpenClaw Integration
 
-This guide describes how to use OpenClaw as the daily workflow runner for
-Polyglo.
+This guide describes the intended OpenClaw workflow for Polyglo.
 
-Polyglo should remain the source of truth for vocabulary, lessons, review
-history, language settings, and quality control. OpenClaw should only trigger
-the daily workflow, fetch the generated lesson, send it to your chosen channel,
-and mark the lesson as sent.
+The product model is:
 
-## Target Workflow
+- OpenClaw generates vocabulary candidates.
+- Polyglo stores those candidates as reviewable backend records.
+- You approve good candidates in Polyglo.
+- Polyglo generates lessons only from approved `active` vocabulary.
+- OpenClaw delivers the generated lesson and marks it as sent.
 
-Run this workflow every day at 8:00 AM:
+This keeps the AI creative loop while preserving a quality gate before words
+enter your long-term learning feed.
 
-1. Call Polyglo to generate today's lesson.
-2. Read the generated Markdown message.
-3. Send the Markdown to the destination you choose, such as Telegram, email,
-   LINE, Slack, or Obsidian.
-4. Mark the lesson as sent in Polyglo.
-5. Leave review ratings to be filled in later from the Polyglo UI.
+## Roles
+
+| System | Responsibility |
+|---|---|
+| OpenClaw | Scheduled workflow, AI candidate generation, delivery |
+| Polyglo | Language settings, candidate storage, review gate, lesson history, review logs |
+| You | Approve candidates, adjust language settings, review learned words |
+
+## Recommended Daily Workflow
+
+Use two OpenClaw jobs.
+
+### Job 1: Generate Candidates
+
+Run this before your learning time, for example at 7:30 AM.
+
+1. Call `GET /api/generation-plan`.
+2. Generate one candidate word per enabled language.
+3. Call `POST /api/vocabulary/candidates`.
+4. Stop. Do not send these words yet.
+
+The candidates enter Polyglo as:
+
+```json
+{
+  "source": "ai",
+  "status": "draft"
+}
+```
+
+Review them in Polyglo's Vocabulary Bank. Use the `AI Drafts` filter, then
+click `Approve` for candidates you want to make eligible for lessons.
+
+### Job 2: Deliver Lesson
+
+Run this at the time you want to study, for example at 8:00 AM.
+
+1. Call `POST /api/lessons/generate`.
+2. Read the `generated_message` field.
+3. Send `generated_message` exactly as Markdown to your destination.
+4. After delivery succeeds, call `POST /api/lessons/{id}/mark-sent`.
+
+This job uses only `active` vocabulary, so unreviewed AI drafts are never sent
+by accident.
 
 ## Before Scheduling
 
@@ -37,46 +76,195 @@ python3 app.py --host 0.0.0.0 --port 8000
 For the MVP, Polyglo has no account system or API key. Keep it on a trusted
 local network or behind your own reverse proxy if exposing it outside localhost.
 
-## Recommended OpenClaw Prompt
+## Candidate Generation Prompt
 
-Use this as the OpenClaw task prompt:
+Use this as the OpenClaw prompt for Job 1:
 
 ```text
-Create a daily 8:00 AM language learning workflow named "Polyglo Daily Vocabulary".
+Create a daily workflow named "Polyglo Generate Vocabulary Candidates".
 
 Every day:
 
-1. Send POST http://127.0.0.1:8000/api/lessons/generate
-   with JSON body:
-   {"date":"{{today}}"}
+1. Send:
+   GET http://127.0.0.1:8000/api/generation-plan
 
-2. Read the JSON response field:
-   generated_message
+2. Read:
+   - languages
+   - duplicate_avoidance_days
+   - existing_words
+   - recent_lesson_words
+   - required_fields
+
+3. For each enabled language, generate one vocabulary candidate that satisfies
+   that language's minimum_level.
+
+4. Avoid:
+   - words already present in existing_words
+   - words recently used in recent_lesson_words
+   - proper nouns unless they are especially useful
+   - joke words, obscure trivia, or low-utility vocabulary
+
+5. Each candidate must include:
+   - language
+   - word
+   - reading, if useful
+   - part_of_speech
+   - level
+   - meaning_zh
+   - meaning_en
+   - example_sentence
+   - example_translation_zh
+   - collocation
+   - note
+   - mnemonic
+
+6. Send:
+   POST http://127.0.0.1:8000/api/vocabulary/candidates
+
+   Body:
+   {
+     "items": [
+       {
+         "language": "...",
+         "word": "...",
+         "reading": "...",
+         "part_of_speech": "...",
+         "level": "...",
+         "meaning_zh": "...",
+         "meaning_en": "...",
+         "example_sentence": "...",
+         "example_translation_zh": "...",
+         "collocation": "...",
+         "note": "...",
+         "mnemonic": "..."
+       }
+     ]
+   }
+
+Rules:
+
+- Store generated vocabulary only as candidates.
+- Do not mark candidates active.
+- Do not send the generated candidates to me as the daily lesson.
+- If Polyglo skips a duplicate, report the skipped word and continue.
+- If a language is missing or invalid, report the API error.
+```
+
+## Candidate API
+
+Read the generation plan:
+
+```bash
+curl http://127.0.0.1:8000/api/generation-plan
+```
+
+Example response shape:
+
+```json
+{
+  "date": "2026-05-16",
+  "duplicate_avoidance_days": 30,
+  "candidate_defaults": {
+    "source": "ai",
+    "status": "draft"
+  },
+  "languages": [
+    {
+      "code": "en",
+      "name": "English",
+      "minimum_level": "C1",
+      "enabled": 1
+    }
+  ],
+  "existing_words": {
+    "en": [
+      {
+        "language": "en",
+        "word": "ameliorate",
+        "level": "C1",
+        "status": "active",
+        "source": "manual"
+      }
+    ]
+  },
+  "recent_lesson_words": {}
+}
+```
+
+Create AI candidates:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/vocabulary/candidates \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "items": [
+      {
+        "language": "en",
+        "word": "mitigate",
+        "reading": "",
+        "part_of_speech": "verb",
+        "level": "C1",
+        "meaning_zh": "緩和、減輕",
+        "meaning_en": "to make something less severe or harmful",
+        "example_sentence": "The new policy aims to mitigate the impact of rising rents.",
+        "example_translation_zh": "新政策旨在減輕租金上漲造成的影響。",
+        "collocation": "mitigate risk; mitigate damage",
+        "note": "Often used in formal, policy, risk, and environmental contexts.",
+        "mnemonic": "Think of making a problem milder."
+      }
+    ]
+  }'
+```
+
+The response includes `created` and `skipped` arrays:
+
+```json
+{
+  "created": [
+    {
+      "id": "new-item-id",
+      "source": "ai",
+      "status": "draft"
+    }
+  ],
+  "skipped": []
+}
+```
+
+## Lesson Delivery Prompt
+
+Use this as the OpenClaw prompt for Job 2:
+
+```text
+Create a daily 8:00 AM workflow named "Polyglo Deliver Daily Vocabulary".
+
+Every day:
+
+1. Send:
+   POST http://127.0.0.1:8000/api/lessons/generate
+
+   Body:
+   {}
+
+2. Read the response fields:
+   - id
+   - generated_message
 
 3. Send generated_message exactly as Markdown to my configured learning channel.
 
-4. After the message is successfully sent, send:
+4. After the message is successfully delivered, send:
    POST http://127.0.0.1:8000/api/lessons/{{id}}/mark-sent
 
 Rules:
 
-- Do not invent vocabulary inside OpenClaw.
-- Do not rewrite the generated Markdown unless I explicitly ask.
+- Do not generate new words in this workflow.
+- Do not rewrite generated_message.
 - If lesson generation fails because a language has no eligible active words,
   report the error and do not mark the lesson as sent.
-- Polyglo is the source of truth for enabled languages, minimum levels,
-  duplicate avoidance, lesson history, and review history.
+- Only call mark-sent after the delivery step succeeds.
 ```
 
-Replace `{{today}}` with OpenClaw's date variable if it has one. If OpenClaw
-does not provide a date variable, omit the `date` field and Polyglo will use
-the server's current local date:
-
-```json
-{}
-```
-
-## API Flow
+## Lesson API
 
 Generate or fetch today's lesson:
 
@@ -97,49 +285,30 @@ The response includes:
 }
 ```
 
-Send `generated_message` to the destination channel.
-
 After the send succeeds:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/lessons/lesson-id/mark-sent
 ```
 
-OpenClaw should call `mark-sent` only after the delivery step succeeds. If
-delivery fails, leave the lesson as `pending` so you can retry safely.
+## Review Workflow
 
-## Language Configuration
+In Polyglo:
 
-Polyglo is not limited to five languages. Configure languages in the Settings
-page:
+1. Open Vocabulary Bank.
+2. Click `AI Drafts`.
+3. Review the generated word, level, translations, example, note, and mnemonic.
+4. Click `Approve` to change it from `draft` to `active`.
+5. Leave questionable words as `draft` or archive them.
 
-- `code`: a short stable identifier, such as `en`, `id`, `ja`, `de`, `es`,
-  `fr`, `ko`, `yue`, or `nan`.
-- `name`: display name, such as `English`, `French`, or `Taiwanese Hokkien`.
-- `minimum_level`: optional. Use any system that fits the language, such as
-  `A2`, `B1`, `C1`, `N4`, `HSK3`, `TOPIK2`, `beginner`, or `intermediate`.
-- `enabled`: enabled languages are included in each generated lesson.
-
-Each generated lesson selects one active vocabulary item per enabled language.
-
-## Quality Control
-
-For the current MVP, add vocabulary manually or import curated data yourself.
-OpenClaw should not generate new words directly into a lesson.
-
-Recommended policy:
-
-1. AI-generated vocabulary may be added as `draft`.
-2. Review the word, example, translation, usage note, and level in Polyglo.
-3. Change the item to `active` only after review.
-4. Let OpenClaw send only generated lessons from active vocabulary.
-
-This keeps the daily learning feed stable and prevents low-quality generated
-entries from becoming part of your long-term vocabulary bank.
+Only `active` words are eligible for lessons.
 
 ## Failure Handling
 
-If OpenClaw receives an error like:
+If candidate generation returns `skipped`, OpenClaw should report the skipped
+items and their reasons. Duplicates are intentionally skipped.
+
+If lesson delivery receives an error like:
 
 ```text
 No active vocabulary item found for French at A2+
@@ -147,11 +316,12 @@ No active vocabulary item found for French at A2+
 
 Fix it in Polyglo:
 
-1. Add more vocabulary for that language, or
-2. Lower the language's minimum level, or
-3. Temporarily disable that language in Settings.
+1. Approve AI drafts for that language, or
+2. Add vocabulary manually, or
+3. Lower the language's minimum level, or
+4. Temporarily disable that language in Settings.
 
-Then rerun the OpenClaw task.
+Then rerun the lesson delivery job.
 
 ## Obsidian Option
 

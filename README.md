@@ -31,8 +31,10 @@ languages.
 - `GET /api/dashboard`
 - `GET /api/vocabulary`
 - `GET /api/languages`
+- `GET /api/generation-plan`
 - `GET /api/lessons`
 - `GET /api/reviews`
+- `POST /api/vocabulary/candidates`
 - `POST /api/lessons/generate`
 - `POST /api/lessons/:id/mark-sent`
 - `POST /api/languages`
@@ -52,11 +54,12 @@ curl -X POST http://127.0.0.1:8000/api/lessons/generate \
 ## OpenClaw
 
 Use OpenClaw as the daily trigger and delivery runner. Polyglo should remain the
-source of truth for vocabulary, generated lessons, review history, and language
-settings.
+backend for generated vocabulary candidates, human review, generated lessons,
+review history, and language settings.
 
-See [docs/openclaw.md](docs/openclaw.md) for the recommended daily 8:00 AM
-workflow, prompt, API calls, and failure handling.
+See [docs/openclaw.md](docs/openclaw.md) for the recommended AI candidate
+generation workflow, prompt, API calls, review gate, delivery flow, and failure
+handling.
 
 ## Data
 

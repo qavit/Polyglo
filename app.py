@@ -460,6 +460,9 @@ class Handler(SimpleHTTPRequestHandler):
                 if parsed.path == "/api/languages":
                     self.send_json(list_languages(conn))
                     return
+                if parsed.path == "/api/generation-plan":
+                    self.send_json(generation_plan(conn))
+                    return
                 if parsed.path == "/api/dashboard":
                     self.send_json(dashboard_payload(conn))
                     return
@@ -492,6 +495,9 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/vocabulary":
                 self.send_json(create_vocabulary(self.read_json()), 201)
+                return
+            if parsed.path == "/api/vocabulary/candidates":
+                self.send_json(create_vocabulary_candidates(self.read_json()), 201)
                 return
             if parsed.path == "/api/languages":
                 self.send_json(create_language(self.read_json()), 201)
@@ -559,7 +565,7 @@ def dashboard_payload(conn: sqlite3.Connection) -> dict[str, Any]:
 def list_vocabulary(conn: sqlite3.Connection, query: dict[str, list[str]]) -> list[dict[str, Any]]:
     filters = []
     params: list[Any] = []
-    for field in ("language", "status", "level"):
+    for field in ("language", "status", "level", "source"):
         value = query.get(field, [""])[0]
         if value:
             filters.append(f"{field} = ?")
@@ -570,6 +576,55 @@ def list_vocabulary(conn: sqlite3.Connection, query: dict[str, list[str]]) -> li
         params,
     ).fetchall()
     return [row_to_dict(row) for row in rows]
+
+
+def generation_plan(conn: sqlite3.Connection) -> dict[str, Any]:
+    settings = get_settings(conn)
+    enabled_languages = list_languages(conn, enabled_only=True)
+    existing_rows = conn.execute(
+        """
+        SELECT language, word, level, status, source
+        FROM vocabulary_items
+        ORDER BY language, word
+        """
+    ).fetchall()
+    recent_rows = conn.execute(
+        """
+        SELECT dl.lesson_date, v.language, v.word
+        FROM daily_lesson_items dli
+        JOIN daily_lessons dl ON dl.id = dli.lesson_id
+        JOIN vocabulary_items v ON v.id = dli.vocabulary_item_id
+        WHERE dl.lesson_date >= ?
+        ORDER BY dl.lesson_date DESC
+        """,
+        (
+            (date.today() - timedelta(days=settings["duplicate_avoidance_days"])).isoformat(),
+        ),
+    ).fetchall()
+    existing_by_language: dict[str, list[dict[str, Any]]] = {}
+    for row in existing_rows:
+        existing_by_language.setdefault(row["language"], []).append(row_to_dict(row))
+    recent_by_language: dict[str, list[dict[str, Any]]] = {}
+    for row in recent_rows:
+        recent_by_language.setdefault(row["language"], []).append(row_to_dict(row))
+    return {
+        "date": today_iso(),
+        "duplicate_avoidance_days": settings["duplicate_avoidance_days"],
+        "candidate_defaults": {"source": "ai", "status": "draft"},
+        "languages": enabled_languages,
+        "existing_words": existing_by_language,
+        "recent_lesson_words": recent_by_language,
+        "required_fields": [
+            "language",
+            "word",
+            "part_of_speech",
+            "level",
+            "meaning_zh",
+            "meaning_en",
+            "example_sentence",
+            "example_translation_zh",
+        ],
+    }
 
 
 def create_language(payload: dict[str, Any]) -> dict[str, Any]:
@@ -655,6 +710,11 @@ def list_reviews(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
 
 def create_vocabulary(payload: dict[str, Any]) -> dict[str, Any]:
+    with connect() as conn:
+        return insert_vocabulary(conn, payload)
+
+
+def insert_vocabulary(conn: sqlite3.Connection, payload: dict[str, Any]) -> dict[str, Any]:
     required = [
         "language",
         "word",
@@ -668,39 +728,90 @@ def create_vocabulary(payload: dict[str, Any]) -> dict[str, Any]:
     missing = [key for key in required if not payload.get(key)]
     if missing:
         raise ValueError(f"Missing required fields: {', '.join(missing)}")
+    language = conn.execute(
+        "SELECT 1 FROM languages WHERE code = ?", (payload["language"],)
+    ).fetchone()
+    if not language:
+        raise ValueError(f"Language is not configured: {payload['language']}")
     item_id = str(uuid.uuid4())
-    with connect() as conn:
-        conn.execute(
-            """
-            INSERT INTO vocabulary_items (
-                id, language, word, reading, part_of_speech, level,
-                meaning_zh, meaning_en, example_sentence, example_translation_zh,
-                collocation, note, mnemonic, source, status, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                item_id,
-                payload["language"],
-                payload["word"],
-                payload.get("reading", ""),
-                payload["part_of_speech"],
-                payload["level"],
-                payload["meaning_zh"],
-                payload["meaning_en"],
-                payload["example_sentence"],
-                payload["example_translation_zh"],
-                payload.get("collocation", ""),
-                payload.get("note", ""),
-                payload.get("mnemonic", ""),
-                payload.get("source", "manual"),
-                payload.get("status", "draft"),
-                now_iso(),
-                now_iso(),
-            ),
+    conn.execute(
+        """
+        INSERT INTO vocabulary_items (
+            id, language, word, reading, part_of_speech, level,
+            meaning_zh, meaning_en, example_sentence, example_translation_zh,
+            collocation, note, mnemonic, source, status, created_at, updated_at
         )
-        row = conn.execute("SELECT * FROM vocabulary_items WHERE id = ?", (item_id,)).fetchone()
-        return row_to_dict(row)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            item_id,
+            payload["language"],
+            payload["word"],
+            payload.get("reading", ""),
+            payload["part_of_speech"],
+            payload["level"],
+            payload["meaning_zh"],
+            payload["meaning_en"],
+            payload["example_sentence"],
+            payload["example_translation_zh"],
+            payload.get("collocation", ""),
+            payload.get("note", ""),
+            payload.get("mnemonic", ""),
+            payload.get("source", "manual"),
+            payload.get("status", "draft"),
+            now_iso(),
+            now_iso(),
+        ),
+    )
+    row = conn.execute("SELECT * FROM vocabulary_items WHERE id = ?", (item_id,)).fetchone()
+    return row_to_dict(row)
+
+
+def create_vocabulary_candidates(payload: dict[str, Any]) -> dict[str, Any]:
+    items = payload.get("items")
+    if not isinstance(items, list) or not items:
+        raise ValueError("items must be a non-empty list")
+    created = []
+    skipped = []
+    with connect() as conn:
+        for item in items:
+            if not isinstance(item, dict):
+                skipped.append({"reason": "Item is not an object", "item": item})
+                continue
+            candidate = {
+                **item,
+                "source": item.get("source", "ai"),
+                "status": item.get("status", "draft"),
+            }
+            duplicate = conn.execute(
+                """
+                SELECT id, status, source
+                FROM vocabulary_items
+                WHERE language = ? AND lower(word) = lower(?)
+                """,
+                (candidate.get("language"), candidate.get("word", "")),
+            ).fetchone()
+            if duplicate:
+                skipped.append(
+                    {
+                        "language": candidate.get("language"),
+                        "word": candidate.get("word"),
+                        "reason": "Duplicate vocabulary item",
+                        "existing_id": duplicate["id"],
+                    }
+                )
+                continue
+            try:
+                created.append(insert_vocabulary(conn, candidate))
+            except ValueError as exc:
+                skipped.append(
+                    {
+                        "language": candidate.get("language"),
+                        "word": candidate.get("word"),
+                        "reason": str(exc),
+                    }
+                )
+    return {"created": created, "skipped": skipped}
 
 
 def update_vocabulary(item_id: str, payload: dict[str, Any]) -> dict[str, Any]:

@@ -61,19 +61,20 @@ function formatLanguage(code) {
 }
 
 function wordCard(item, controls = true) {
+  const actionLabel = item.status === "active" ? "Archive" : item.source === "ai" && item.status === "draft" ? "Approve" : "Activate";
   return `
     <article class="word-card">
       <header>
         <div>
           <div class="word-title">${escapeHtml(item.word)}${item.reading ? ` · ${escapeHtml(item.reading)}` : ""}</div>
-          <div class="word-meta">${formatLanguage(item.language)} · ${escapeHtml(item.level)} · ${escapeHtml(item.part_of_speech)}</div>
+          <div class="word-meta">${formatLanguage(item.language)} · ${escapeHtml(item.level)} · ${escapeHtml(item.part_of_speech)} · ${escapeHtml(item.source)}</div>
         </div>
         <span class="badge ${item.status === "draft" ? "warm" : ""}">${escapeHtml(item.status)}</span>
       </header>
       <p class="word-meta">${escapeHtml(item.meaning_zh)} · ${escapeHtml(item.meaning_en)}</p>
       <p>${escapeHtml(item.example_sentence)}</p>
       <p class="word-meta">${escapeHtml(item.example_translation_zh)}</p>
-      ${controls ? `<button class="ghost status-toggle" data-id="${item.id}" data-status="${item.status === "active" ? "archived" : "active"}">${item.status === "active" ? "Archive" : "Activate"}</button>` : ""}
+      ${controls ? `<button class="ghost status-toggle" data-id="${item.id}" data-status="${item.status === "active" ? "archived" : "active"}">${actionLabel}</button>` : ""}
     </article>
   `;
 }
@@ -94,9 +95,11 @@ async function loadDashboard() {
 async function loadVocabulary() {
   const language = $("#filter-language").value;
   const status = $("#filter-status").value;
+  const source = $("#filter-source").value;
   const query = new URLSearchParams();
   if (language) query.set("language", language);
   if (status) query.set("status", status);
+  if (source) query.set("source", source);
   state.vocabulary = await api(`/api/vocabulary?${query}`);
   renderVocabulary();
   renderReviewVocabularyOptions();
@@ -256,6 +259,12 @@ function bindEvents() {
 
   $("#filter-language").addEventListener("change", loadVocabulary);
   $("#filter-status").addEventListener("change", loadVocabulary);
+  $("#filter-source").addEventListener("change", loadVocabulary);
+  $("#show-ai-drafts").addEventListener("click", () => {
+    $("#filter-status").value = "draft";
+    $("#filter-source").value = "ai";
+    loadVocabulary();
+  });
   $("#reload-vocab").addEventListener("click", loadVocabulary);
 
   $("#vocab-form").addEventListener("submit", async (event) => {
