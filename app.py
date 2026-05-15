@@ -684,7 +684,10 @@ def generation_plan(conn: sqlite3.Connection) -> dict[str, Any]:
     return {
         "date": today_iso(),
         "duplicate_avoidance_days": settings["duplicate_avoidance_days"],
-        "candidate_defaults": {"source": "ai", "status": "draft"},
+        "candidate_defaults": {
+            "source": "ai",
+            "status": "draft" if settings.get("require_review_for_ai_words", "true") == "true" else "active",
+        },
         "languages": enabled_languages,
         "existing_words": existing_by_language,
         "recent_lesson_words": recent_by_language,
@@ -904,7 +907,7 @@ def create_vocabulary_candidates(payload: dict[str, Any]) -> dict[str, Any]:
             candidate = {
                 **item,
                 "source": item.get("source", "ai"),
-                "status": item.get("status", auto_status),
+                "status": auto_status,
             }
             duplicate = conn.execute(
                 """
@@ -972,9 +975,23 @@ def update_vocabulary(item_id: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 def delete_vocabulary(item_id: str) -> dict[str, Any]:
     with connect() as conn:
-        row = conn.execute("SELECT id FROM vocabulary_items WHERE id = ?", (item_id,)).fetchone()
+        row = conn.execute("SELECT id, word FROM vocabulary_items WHERE id = ?", (item_id,)).fetchone()
         if not row:
             raise ValueError("Vocabulary item not found")
+        conflict = conn.execute(
+            """
+            SELECT dl.lesson_date FROM daily_lesson_items dli
+            JOIN daily_lessons dl ON dl.id = dli.lesson_id
+            WHERE dli.vocabulary_item_id = ? AND dl.status = 'sent'
+            LIMIT 1
+            """,
+            (item_id,),
+        ).fetchone()
+        if conflict:
+            raise ValueError(
+                f'Cannot delete "{row["word"]}": it appears in the sent lesson on {conflict["lesson_date"]}. '
+                "Archive it instead."
+            )
         conn.execute("DELETE FROM daily_lesson_items WHERE vocabulary_item_id = ?", (item_id,))
         conn.execute("DELETE FROM review_logs WHERE vocabulary_item_id = ?", (item_id,))
         conn.execute("DELETE FROM vocabulary_items WHERE id = ?", (item_id,))

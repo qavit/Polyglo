@@ -209,7 +209,10 @@ function renderLessons() {
               <span class="badge">${lesson.items.length} words</span>
             </header>
             <div class="lesson-cards">${lesson.items.map((item) => wordCard(item, false)).join("")}</div>
-            <pre class="markdown">${escapeHtml(lesson.generated_message)}</pre>
+            <div class="markdown-wrap">
+              <button class="icon-btn copy-md" data-text="${escapeHtml(lesson.generated_message)}" data-tooltip="Copy Markdown">${svg('<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>')}</button>
+              <pre class="markdown">${escapeHtml(lesson.generated_message)}</pre>
+            </div>
           </article>
         `
         )
@@ -452,6 +455,23 @@ function bindEvents() {
         notice(error.message, "error");
       }
       return;
+    }
+  });
+
+  $("#lesson-list").addEventListener("click", async (event) => {
+    const copyBtn = event.target.closest(".copy-md");
+    if (!copyBtn) return;
+    try {
+      await navigator.clipboard.writeText(copyBtn.dataset.text);
+      const prev = copyBtn.innerHTML;
+      copyBtn.innerHTML = svg('<polyline points="20 6 9 17 4 12"/>');
+      copyBtn.dataset.tooltip = "Copied!";
+      setTimeout(() => {
+        copyBtn.innerHTML = prev;
+        copyBtn.dataset.tooltip = "Copy Markdown";
+      }, 1500);
+    } catch {
+      notice("Clipboard access denied.", "error");
     }
   });
 }

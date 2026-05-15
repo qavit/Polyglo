@@ -389,8 +389,26 @@ label {
   width: auto;
 }
 
-.markdown {
+.markdown-wrap {
+  position: relative;
   margin-top: 12px;
+}
+
+.markdown-wrap .copy-md {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: #a09080;
+  z-index: 1;
+}
+
+.markdown-wrap .copy-md:hover {
+  background: rgba(255,255,255,0.12);
+  color: #f7f1e7;
+}
+
+.markdown {
+  margin-top: 0;
   max-height: 430px;
   overflow: auto;
   padding: 14px;
