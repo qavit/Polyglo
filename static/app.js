@@ -269,11 +269,12 @@ function bindEvents() {
 
   $("#vocab-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const el = event.currentTarget;
+    const form = new FormData(el);
     const payload = Object.fromEntries(form.entries());
     try {
       await api("/api/vocabulary", { method: "POST", body: JSON.stringify(payload) });
-      event.currentTarget.reset();
+      el.reset();
       $('[name="language"]').innerHTML = languageOptions(false);
       await refreshAll();
       notice("Vocabulary item added.");
@@ -295,12 +296,13 @@ function bindEvents() {
 
   $("#review-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const el = event.currentTarget;
+    const form = new FormData(el);
     const payload = Object.fromEntries(form.entries());
     payload.recall_success = form.has("recall_success");
     try {
       await api("/api/reviews", { method: "POST", body: JSON.stringify(payload) });
-      event.currentTarget.reset();
+      el.reset();
       $('[name="review_date"]').value = state.bootstrap.today;
       await refreshAll();
       notice("Review saved.");
@@ -311,13 +313,14 @@ function bindEvents() {
 
   $("#language-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const el = event.currentTarget;
+    const form = new FormData(el);
     const payload = Object.fromEntries(form.entries());
     payload.enabled = form.has("enabled");
     try {
       await api("/api/languages", { method: "POST", body: JSON.stringify(payload) });
-      event.currentTarget.reset();
-      event.currentTarget.elements.enabled.checked = true;
+      el.reset();
+      el.elements.enabled.checked = true;
       await loadBootstrap();
       await refreshAll();
       notice("Language added.");
